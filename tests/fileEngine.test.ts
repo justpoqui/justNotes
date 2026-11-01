@@ -1,0 +1,202 @@
+import { promises as fs } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { EngineFailure, FileEngine, validateName } from '../src/main/fileEngine'
+
+let root: string
+let engine: FileEngine
+
+beforeEach(async () => {
+  root = await fs.mkdtemp(path.join(os.tmpdir(), 'wikibook-test-'))
+  engine = new FileEngine(path.join(root, 'Notebooks'))
+})
+afterEach(async () => {
+  await fs.rm(root, { recursive: true, force: true })
+})
+
+const exists = (...p: string[]) =>
+  fs.stat(path.join(engine.root, ...p)).then(
+    () => true,
+    () => false
+  )
+
+async function code(p: Promise<unknown>): Promise<string> {
+  try {
+    await p
+  } catch (e) {
+    if (e instanceof EngineFailure) return e.code
+    throw e
+  }
+  return 'OK'
+}
+
+describe('validateName', () => {
+  it('trims and accepts normal names, including unicode and spaces', () => {
+    expect(validateName('  Work Notes ', 'notebook')).toBe('Work Notes')
+    expect(validateName('Café ☕ 2026', 'page')).toBe('Café ☕ 2026')
+  })
+  it('strips a trailing .md from page names', () => {
+    expect(validateName('Todo.md', 'page')).toBe('Todo')
+  })
+  it.each(['', '   ', 'a/b', 'a\\b', 'a:b', 'a*b', 'a?b', 'a"b', 'a<b', 'a>b', 'a|b', '[[x]]', 'a#b', '.hidden', 'end.', '..', 'tab\there', 'x'.repeat(121)])(
+    'rejects %j',
+    (n) => {
+      expect(() => validateName(n, 'section')).toThrowError(EngineFailure)
+    }
+  )
+  it('rejects page names that would clash with whiteboard files', () => {
+    expect(() => validateName('Plan.canvas', 'page')).toThrowError(/reserved/)
+  })
+})
+
+describe('FileEngine', () => {
+  it('creates the root folder and lists an empty tree', async () => {
+    const tree = await engine.listTree()
+    expect(tree.notebooks).toEqual([])
+    expect(await exists()).toBe(true)
+  })
+
+  it('creates notebook → section → page on disk', async () => {
+    await engine.createNotebook('Work')
+    await engine.createSection('Work', 'Meetings')
+    const page = await engine.createPage('Work', 'Meetings', 'Standup')
+    expect(page.path).toBe(path.join(engine.root, 'Work', 'Meetings', 'Standup.md'))
+    expect(await fs.readFile(page.path, 'utf8')).toBe('# Standup\n\n')
+
+    const tree = await engine.listTree()
+    expect(tree.notebooks.map((n) => n.name)).toEqual(['Work'])
+    expect(tree.notebooks[0].sections[0].name).toBe('Meetings')
+    expect(tree.notebooks[0].sections[0].pages.map((p) => p.name)).toEqual(['Standup'])
+  })
+
+  it('rejects duplicates, case-insensitively', async () => {
+    await engine.createNotebook('Work')
+    expect(await code(engine.createNotebook('Work'))).toBe('DUPLICATE')
+    expect(await code(engine.createNotebook('work'))).toBe('DUPLICATE')
+    await engine.createSection('Work', 'A')
+    expect(await code(engine.createSection('Work', 'a'))).toBe('DUPLICATE')
+    await engine.createPage('Work', 'A', 'Page')
+    expect(await code(engine.createPage('Work', 'A', 'PAGE'))).toBe('DUPLICATE')
+  })
+
+  it('allows the same name at different levels / in different parents', async () => {
+    await engine.createNotebook('One')
+    await engine.createNotebook('Two')
+    await engine.createSection('One', 'Ideas')
+    await engine.createSection('Two', 'Ideas')
+    await engine.createPage('One', 'Ideas', 'Ideas')
+    await engine.createPage('Two', 'Ideas', 'Ideas')
+    expect(await exists('Two', 'Ideas', 'Ideas.md')).toBe(true)
+  })
+
+  it('rejects invalid names on create and rename', async () => {
+    expect(await code(engine.createNotebook('bad/name'))).toBe('INVALID_NAME')
+    await engine.createNotebook('Ok')
+    expect(await code(engine.renameNotebook('Ok', 'what?'))).toBe('INVALID_NAME')
+    expect(await exists('Ok')).toBe(true)
+  })
+
+  it('cannot escape the root with path tricks', async () => {
+    expect(await code(engine.createNotebook('..'))).toBe('INVALID_NAME')
+    expect(await code(engine.deleteNotebook('..', { force: true }))).toBe('INVALID_NAME')
+    expect(await code(engine.deleteNotebook('../..', { force: true }))).toBe('INVALID_NAME')
+    expect(await code(engine.createSection('..', 'x'))).toBe('INVALID_NAME')
+  })
+
+  it('renames notebooks and sections, keeping contents', async () => {
+    await engine.createNotebook('Old')
+    await engine.createSection('Old', 'S')
+    await engine.createPage('Old', 'S', 'P')
+    await engine.renameNotebook('Old', 'New')
+    await engine.renameSection('New', 'S', 'S2')
+    expect(await exists('New', 'S2', 'P.md')).toBe(true)
+    expect(await exists('Old')).toBe(false)
+  })
+
+  it('allows a case-only rename', async () => {
+    await engine.createNotebook('work')
+    await engine.renameNotebook('work', 'Work')
+    expect((await engine.listTree()).notebooks.map((n) => n.name)).toEqual(['Work'])
+  })
+
+  it('rejects renaming onto an existing name', async () => {
+    await engine.createNotebook('A')
+    await engine.createNotebook('B')
+    expect(await code(engine.renameNotebook('A', 'b'))).toBe('DUPLICATE')
+  })
+
+  it('renames a page, its whiteboard file and its default heading', async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await engine.createPage('N', 'S', 'Draft')
+    await fs.writeFile(path.join(engine.root, 'N', 'S', 'Draft.canvas.json'), '{}')
+    await engine.renamePage('N', 'S', 'Draft', 'Final')
+    expect(await fs.readFile(path.join(engine.root, 'N', 'S', 'Final.md'), 'utf8')).toBe('# Final\n\n')
+    expect(await exists('N', 'S', 'Final.canvas.json')).toBe(true)
+    expect(await exists('N', 'S', 'Draft.md')).toBe(false)
+    const page = (await engine.listTree()).notebooks[0].sections[0].pages[0]
+    expect(page).toMatchObject({ name: 'Final', hasCanvas: true })
+  })
+
+  it('reports NOT_FOUND for things that do not exist', async () => {
+    expect(await code(engine.renameNotebook('Ghost', 'X'))).toBe('NOT_FOUND')
+    expect(await code(engine.createSection('Ghost', 'X'))).toBe('NOT_FOUND')
+    await engine.createNotebook('N')
+    expect(await code(engine.createPage('N', 'Ghost', 'X'))).toBe('NOT_FOUND')
+    await engine.createSection('N', 'S')
+    expect(await code(engine.deletePage('N', 'S', 'Ghost'))).toBe('NOT_FOUND')
+  })
+
+  it('deletes empty folders without confirmation', async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await engine.deleteSection('N', 'S')
+    await engine.deleteNotebook('N')
+    expect(await exists('N')).toBe(false)
+  })
+
+  it('refuses to delete non-empty folders unless forced, and reports contents', async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await engine.createPage('N', 'S', 'P1')
+    await engine.createPage('N', 'S', 'P2')
+    await fs.writeFile(path.join(engine.root, 'N', 'S', 'image.png'), '')
+
+    const err = await engine.deleteNotebook('N').catch((e) => e)
+    expect(err).toBeInstanceOf(EngineFailure)
+    expect(err.code).toBe('NOT_EMPTY')
+    expect(err.contents).toEqual({ sections: 1, pages: 2, otherFiles: 1 })
+    expect(await exists('N', 'S', 'P1.md')).toBe(true)
+
+    expect(await code(engine.deleteSection('N', 'S'))).toBe('NOT_EMPTY')
+    await engine.deleteNotebook('N', { force: true })
+    expect(await exists('N')).toBe(false)
+  })
+
+  it('deletes a page together with its whiteboard file', async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await engine.createPage('N', 'S', 'P')
+    await fs.writeFile(path.join(engine.root, 'N', 'S', 'P.canvas.json'), '{}')
+    await engine.deletePage('N', 'S', 'P')
+    expect(await fs.readdir(path.join(engine.root, 'N', 'S'))).toEqual([])
+  })
+
+  it('can still rename/delete items created outside the app with unusual names', async () => {
+    await fs.mkdir(path.join(engine.root, 'Odd: name'), { recursive: true })
+    await engine.renameNotebook('Odd: name', 'Normal')
+    expect(await exists('Normal')).toBe(true)
+  })
+
+  it('ignores hidden folders and non-.md files in the tree', async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await fs.mkdir(path.join(engine.root, '.git'))
+    await fs.writeFile(path.join(engine.root, 'N', 'S', 'notes.txt'), '')
+    await engine.createPage('N', 'S', 'Real')
+    const tree = await engine.listTree()
+    expect(tree.notebooks.map((n) => n.name)).toEqual(['N'])
+    expect(tree.notebooks[0].sections[0].pages.map((p) => p.name)).toEqual(['Real'])
+  })
+})
