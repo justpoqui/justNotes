@@ -43,3 +43,5 @@ export const ZoomOut = I(<><circle cx="9" cy="9" r="5.5" /><path d="m13 13 4 4M6
 export const ZoomReset = I(<><circle cx="9" cy="9" r="5.5" /><path d="m13 13 4 4" /><text x="9" y="11.3" fontSize="6.5" textAnchor="middle" fill="currentColor" stroke="none" fontFamily="system-ui">1:1</text></>)
 export const Folder = I(<path d="M2.5 5.5A1.5 1.5 0 0 1 4 4h3.5l1.5 1.5h7A1.5 1.5 0 0 1 17.5 7v7.5A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5z" />)
 export const Reveal = I(<><path d="M2.5 5.5A1.5 1.5 0 0 1 4 4h3.5l1.5 1.5h7A1.5 1.5 0 0 1 17.5 7v7.5A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5z" /><path d="M8 11h5M11 9l2 2-2 2" /></>)
+export const Rename = I(<><path d="M3 15.5h5" /><path d="m12.5 4 3.5 3.5-7 7H5.5V11z" /></>)
+export const Trash = I(<><path d="M4 6h12M8 6V4h4v2M5.5 6l.8 10h7.4l.8-10" /><path d="M8.5 9v4.5M11.5 9v4.5" /></>)

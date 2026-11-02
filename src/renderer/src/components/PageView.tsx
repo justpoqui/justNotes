@@ -19,9 +19,10 @@ interface Props {
   mode: PageMode
   setMode(mode: PageMode): void
   theme: 'dark' | 'light'
+  onOpenNotebook(): void
 }
 
-export function PageView({ tree, selectedKey, select, startCreate, notify, mode, setMode, theme }: Props) {
+export function PageView({ tree, selectedKey, select, startCreate, notify, mode, setMode, theme, onOpenNotebook }: Props) {
   // Where the editor / whiteboard show their "Saved" indicator.
   const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null)
 
@@ -40,7 +41,18 @@ export function PageView({ tree, selectedKey, select, startCreate, notify, mode,
               </button>
             </>
           ) : (
-            <p>Select a page in the sidebar.</p>
+            <>
+              <h2>No notebook open</h2>
+              <p>
+                You have {tree.notebooks.length} notebook{tree.notebooks.length === 1 ? '' : 's'}.
+              </p>
+              <div className="placeholder-actions">
+                <button className="primary" onClick={onOpenNotebook}>
+                  Open notebook
+                </button>
+                <button onClick={() => startCreate(null)}>New notebook</button>
+              </div>
+            </>
           )}
         </div>
       </main>

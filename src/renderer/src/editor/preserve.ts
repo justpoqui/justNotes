@@ -26,6 +26,9 @@ export function findUnsupported(md: string): string[] {
     .replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, '') // fenced code
     .replace(/^( {4}|\t).*$/gm, '') // indented code
     .replace(/`+[^`\n]*`+/g, '') // inline code
+    // Tags the editor itself writes for text colour, font size and highlights.
+    .replace(/<span style="(?:\s*(?:color|font-size):\s*[#\w\s.,()%-]+;?)+\s*">|<\/span>/gi, '')
+    .replace(/<mark(?: style="\s*background-color:\s*[#\w\s.,()%-]+;?\s*")?>|<\/mark>/gi, '')
   const found: string[] = []
   if (/<\/?[a-z][a-z\d-]*(\s[^<>]*)?\/?>|<!--/i.test(text)) found.push('HTML tags')
   if (/\[\^[^\]\s]+\]/.test(text)) found.push('footnotes')

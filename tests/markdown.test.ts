@@ -104,3 +104,54 @@ describe('escapeMarkdownText', () => {
     expect(escapeMarkdownText('&amp;')).toBe('\\&amp;')
   })
 })
+
+describe('text colour, size and highlight', () => {
+  it('saves and reloads coloured / sized text and highlights', () => {
+    const e = load('Plain')
+    e.commands.setContent({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'red big', marks: [{ type: 'textStyle', attrs: { color: '#e06c75', fontSize: '20px' } }] },
+            { type: 'text', text: ' then ' },
+            { type: 'text', text: 'marked', marks: [{ type: 'highlight' }] },
+            { type: 'text', text: ' and ' },
+            { type: 'text', text: 'green', marks: [{ type: 'highlight', attrs: { color: '#a5d6a7' } }] }
+          ]
+        }
+      ]
+    })
+    const md = save(e)
+    expect(md).toBe('<span style="color: #e06c75; font-size: 20px">red big</span> then ==marked== and <mark style="background-color: #a5d6a7">green</mark>\n')
+    const back = load(md).getJSON().content![0].content!
+    expect(back[0]).toMatchObject({ text: 'red big', marks: [{ type: 'textStyle', attrs: { color: '#e06c75', fontSize: '20px' } }] })
+    expect(back[2]).toMatchObject({ text: 'marked', marks: [{ type: 'highlight' }] })
+    expect(back[4]).toMatchObject({ text: 'green', marks: [{ type: 'highlight', attrs: { color: '#a5d6a7' } }] })
+    expect(roundTrip(md)).toBe(md)
+  })
+
+  it('combines with bold', () => {
+    const md = '**<span style="color: #61afef">blue bold</span>** and [<span style="font-size: 20px">big link</span>](https://x.y)\n'
+    expect(roundTrip(md)).toBe(md)
+    const marks = load(md).getJSON().content![0].content![0].marks!.map((m) => m.type).sort()
+    expect(marks).toEqual(['bold', 'textStyle'])
+  })
+
+  it('keeps special characters inside coloured text', () => {
+    const e = load('')
+    const text = 'a < b & *c* `d` \\ ==e=='
+    e.commands.setContent({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text, marks: [{ type: 'textStyle', attrs: { color: '#e06c75' } }] }] }] })
+    const md = save(e)
+    const back = load(md).getJSON().content![0].content!
+    expect(back).toHaveLength(1)
+    expect(back[0]).toMatchObject({ text, marks: [{ type: 'textStyle', attrs: { color: '#e06c75' } }] })
+  })
+
+  it('nests plain highlight and coloured text', () => {
+    const md = '==<span style="color: #e06c75">red on yellow</span>==\n'
+    expect(roundTrip(md)).toBe(md)
+  })
+})
+

@@ -26,9 +26,36 @@ interface Props {
   onZoom(direction: 'in' | 'out' | 'reset'): void
   openRootFolder(): void
   revealPage(): void
+  onOpenNotebook(): void
+  onRenameNotebook(): void
+  onDeleteNotebook(): void
+  onRevealNotebook(): void
 }
 
-const TABS = ['Home', 'Insert', 'Draw', 'View'] as const
+const TABS = ['File', 'Home', 'Insert', 'Draw', 'View'] as const
+
+// Text colours chosen to stay readable on both the dark and the light theme.
+const TEXT_COLORS = [
+  ['Red', '#e06c75'],
+  ['Orange', '#e0904f'],
+  ['Gold', '#c9a227'],
+  ['Green', '#5fae5a'],
+  ['Teal', '#3fa7a3'],
+  ['Blue', '#4f8fe6'],
+  ['Purple', '#a274d9'],
+  ['Pink', '#d16fa5'],
+  ['Grey', '#8e9095']
+] as const
+// null = the default yellow highlight (saved as ==text==).
+const HIGHLIGHTS = [
+  ['Yellow', null, '#f6e58d'],
+  ['Green', '#b8e6a6', '#b8e6a6'],
+  ['Blue', '#a8d1f5', '#a8d1f5'],
+  ['Pink', '#f5b8d0', '#f5b8d0'],
+  ['Orange', '#f8cf9c', '#f8cf9c'],
+  ['Purple', '#d4c2f5', '#d4c2f5']
+] as const
+const FONT_SIZES = ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '40px']
 type Tab = (typeof TABS)[number]
 
 /** Re-render whenever the editor's content or selection changes (for active button states). */
@@ -135,6 +162,21 @@ export function Ribbon(props: Props) {
       </div>
 
       <div className="rb-panel" role="tabpanel" aria-label={tab}>
+        {tab === 'File' && (
+          <>
+            <Group label="Notebook">
+              <Btn icon={Ic.NewNotebook} label="New notebook" wide onClick={() => props.startCreate(null)} />
+              <Btn icon={Ic.Folder} label="Open notebook" wide onClick={props.onOpenNotebook} />
+              <Btn icon={Ic.Rename} label="Rename" disabled={!props.notebookKey} onClick={props.onRenameNotebook} />
+              <Btn icon={Ic.Trash} label="Delete" disabled={!props.notebookKey} onClick={props.onDeleteNotebook} />
+            </Group>
+            <Group label="Files">
+              <Btn icon={Ic.Reveal} label="Show notebook folder" wide disabled={!props.notebookKey} onClick={props.onRevealNotebook} />
+              <Btn icon={Ic.Folder} label="WikiBook folder" wide onClick={props.openRootFolder} />
+            </Group>
+          </>
+        )}
+
         {tab === 'Home' && (
           <>
             <Group label="History">
@@ -157,6 +199,52 @@ export function Ribbon(props: Props) {
                 </button>
               </div>
               <Btn icon={Ic.ClearFormat} label="Clear" title="Clear formatting" disabled={!ed} onClick={() => chain().unsetAllMarks().clearNodes().run()} />
+            </Group>
+            <Group label="Font">
+              <div className="rb-font">
+                <select
+                  className="rb-select"
+                  aria-label="Font size"
+                  title="Font size"
+                  disabled={!ed}
+                  value={(ed?.getAttributes('textStyle').fontSize as string | undefined) || ''}
+                  onChange={(e) => (e.target.value ? chain().setFontSize(e.target.value).run() : chain().unsetFontSize().run())}
+                >
+                  <option value="">Size: normal</option>
+                  {FONT_SIZES.map((size) => (
+                    <option key={size} value={size}>
+                      {parseInt(size, 10)}
+                    </option>
+                  ))}
+                </select>
+                <div className="rb-font-row">
+                  <Swatches
+                    label="Font colour"
+                    letter="A"
+                    disabled={!ed}
+                    current={(ed?.getAttributes('textStyle').color as string | undefined) ?? null}
+                    colors={TEXT_COLORS.map(([name, c]) => ({ name, value: c, swatch: c }))}
+                    defaultLabel="Automatic"
+                    onPick={(c) => (c ? chain().setColor(c).run() : chain().unsetColor().run())}
+                  />
+                  <Swatches
+                    label="Highlight"
+                    letter="ab"
+                    highlight
+                    disabled={!ed}
+                    current={is('highlight') ? ((ed?.getAttributes('highlight').color as string | undefined) ?? 'default') : null}
+                    colors={HIGHLIGHTS.map(([name, value, swatch]) => ({ name, value: value ?? 'default', swatch }))}
+                    defaultLabel="No highlight"
+                    onPick={(c) =>
+                      c === null
+                        ? chain().unsetHighlight().run()
+                        : c === 'default'
+                          ? chain().setHighlight().run()
+                          : chain().setHighlight({ color: c }).run()
+                    }
+                  />
+                </div>
+              </div>
             </Group>
             <Group label="Styles">
               <div className="rb-styles">
@@ -208,7 +296,6 @@ export function Ribbon(props: Props) {
             <Group label="Notebook">
               <Btn icon={Ic.NewPage} label="New page" disabled={!props.sectionKey} title={props.sectionKey ? 'New page in this section' : 'Select a section first'} onClick={() => props.startCreate(props.sectionKey)} />
               <Btn icon={Ic.NewSection} label="New section" disabled={!props.notebookKey} title={props.notebookKey ? 'New section in this notebook' : 'Select a notebook first'} onClick={() => props.startCreate(props.notebookKey)} />
-              <Btn icon={Ic.NewNotebook} label="New notebook" onClick={() => props.startCreate(null)} />
             </Group>
             <Group label="Blocks">
               <Btn icon={Ic.Table} label="Table" disabled={!ed} onClick={() => chainAtEnd().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} />
@@ -276,6 +363,86 @@ export function Ribbon(props: Props) {
         )}
       </div>
     </header>
+  )
+}
+
+/** Colour picker button (font colour / highlight) with a drop-down palette. */
+function Swatches({
+  label,
+  letter,
+  highlight = false,
+  disabled,
+  current,
+  colors,
+  defaultLabel,
+  onPick
+}: {
+  label: string
+  letter: string
+  highlight?: boolean
+  disabled: boolean
+  current: string | null
+  colors: { name: string; value: string; swatch: string }[]
+  defaultLabel: string
+  onPick(value: string | null): void
+}) {
+  const [open, setOpen] = useState(false)
+  // The button applies the last colour used; the arrow opens the palette.
+  const [last, setLast] = useState(colors[0])
+  const wrap = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => !wrap.current?.contains(e.target as Node) && setOpen(false)
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [open])
+
+  const pick = (c: { name: string; value: string; swatch: string } | null) => {
+    setOpen(false)
+    if (c) setLast(c)
+    onPick(c ? c.value : null)
+  }
+
+  return (
+    <div className="rb-swatch-wrap" ref={wrap}>
+      <button
+        className={`rb-swatch-btn${current ? ' active' : ''}`}
+        title={`${label}: ${last.name}`}
+        aria-label={`${label} ${last.name}`}
+        disabled={disabled}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => pick(last)}
+      >
+        <span className={highlight ? 'hl-letter' : 'color-letter'} style={highlight ? { background: last.swatch } : undefined}>
+          {letter}
+        </span>
+        <span className="swatch-bar" style={{ background: last.swatch }} />
+      </button>
+      <button className="rb-swatch-more" title={`${label} colours`} aria-label={`More ${label.toLowerCase()} colours`} aria-expanded={open} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen((o) => !o)}>
+        ▾
+      </button>
+      {open && (
+        <div className="rb-palette" role="menu" aria-label={label}>
+          <div className="palette-grid">
+            {colors.map((c) => (
+              <button
+                key={c.name}
+                role="menuitem"
+                className={`palette-swatch${current === c.value ? ' selected' : ''}`}
+                style={{ background: c.swatch }}
+                title={c.name}
+                aria-label={c.name}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(c)}
+              />
+            ))}
+          </div>
+          <button className="palette-default" role="menuitem" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)}>
+            {defaultLabel}
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 

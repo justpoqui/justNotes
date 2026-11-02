@@ -11,6 +11,22 @@ AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network call
 
 ## Status
 
+**One notebook at a time, section tabs, text colour/size/highlight** are done:
+
+- **One notebook at a time.** Only the open notebook is shown. Switch with **File → Open notebook** (or click **Notebook: _name_ ▾** under the ribbon). **File** also has New, Rename and Delete notebook. The app reopens where you left off.
+- **Sections are coloured tabs** under the ribbon, next to the notebook name:
+  - click to switch, **+** to add, double-click (or F2) to rename, right-click for more
+  - the app remembers the last page you had open in each section
+- **The sidebar lists the pages** of the selected section: **+** to add, double-click/F2 to rename, Delete to delete, right-click for more. ✎ marks pages that have a whiteboard.
+- **Home → Font** has three controls. Since Markdown has no native way to store them, they're saved as small inline HTML tags that most Markdown viewers still display, and the app reloads them exactly:
+
+  | Control | Saved in the file as |
+  |---|---|
+  | Font size | `<span style="font-size: 24px">…</span>` |
+  | Font colour | `<span style="color: #e06c75">…</span>` |
+  | Yellow highlight | `==…==` |
+  | Other highlight colours | `<mark style="background-color: …">…</mark>` |
+
 **Whiteboard, ribbon and dark theme** are done:
 
 - **Whiteboard per page:** switch with the **Page / Whiteboard** toggle at the top right of a page, or the **Draw** tab.

@@ -1,16 +1,19 @@
-// App shell: owns the tree data, selection, expanded folders and edit state,
-// and turns sidebar actions into file-engine calls.
+// App shell. One notebook is open at a time: its sections are the tabs under
+// the ribbon, and the selected section's pages are listed in the sidebar.
+// Other notebooks are reached through File ▸ Open notebook.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EngineError, Result, Tree } from '../../shared/types'
 import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog'
 import { ContextMenu, type MenuItem } from './components/ContextMenu'
+import { NotebookDialog, type NotebookDialogMode } from './components/NotebookDialog'
 import { PageView } from './components/PageView'
 import { Ribbon, type PageMode } from './components/Ribbon'
-import { childKindOf, Sidebar, type Editing, type SidebarActions } from './components/Sidebar'
+import { SectionTabs } from './components/SectionTabs'
+import { Sidebar, type Editing, type PageRow, type SidebarActions } from './components/Sidebar'
 import { flushAllSaves } from './editor/saveCoordinator'
 import { load, save } from './lib/storage'
-import { isWithin, kindOf, nameOf, nearestExisting, parentOf, refOf, remapKey, visibleRows } from './lib/tree'
+import { existsIn, isWithin, kindOf, nameOf, nearestExisting, parentOf, refOf, remapKey } from './lib/tree'
 
 const api = window.wiki
 const MIN_WIDTH = 180
@@ -26,32 +29,53 @@ function describeContents(c: EngineError['contents']): string {
   return parts.join(', ')
 }
 
+const remapRecord = (rec: Record<string, string>, from: string, to: string) =>
+  Object.fromEntries(Object.entries(rec).map(([k, v]) => [remapKey(k, from, to), remapKey(v, from, to)]))
+
 export function App() {
   const [tree, setTree] = useState<Tree | null>(null)
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(load<string[]>('jn.expanded', [])))
+  // A section key ("Notebook/Section") or page key ("Notebook/Section/Page"), or a
+  // notebook key when the notebook has no sections. Its notebook is the open one.
   const [selectedKey, setSelectedKey] = useState<string | null>(() => load<string | null>('jn.selected', null))
   const [editing, setEditing] = useState<Editing | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; key: string | null } | null>(null)
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null)
+  const [notebookDialog, setNotebookDialog] = useState<NotebookDialogMode | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [width, setWidth] = useState(() => load('jn.sidebarWidth', 260))
-  const firstLoad = useRef(!localStorage.getItem('jn.expanded'))
   const [theme, setTheme] = useState<'dark' | 'light'>(() => load('jn.theme', 'dark'))
   const [sidebarVisible, setSidebarVisible] = useState(() => load('jn.sidebarVisible', true))
   // Per page: show the text page or its whiteboard (remembered between runs).
   const [pageModes, setPageModes] = useState<Record<string, PageMode>>(() => load('jn.pageModes', {}))
+  // Where you were last: notebook → section key, section key → page key.
+  const [lastSection, setLastSection] = useState<Record<string, string>>(() => load('jn.lastSection', {}))
+  const [lastPage, setLastPage] = useState<Record<string, string>>(() => load('jn.lastPage', {}))
   const [zoom, setZoom] = useState(1)
+  const firstLoad = useRef(true)
+  const remembered = useRef({ lastSection, lastPage })
+  remembered.current = { lastSection, lastPage }
 
-  useEffect(() => save('jn.expanded', [...expanded]), [expanded])
   useEffect(() => save('jn.selected', selectedKey), [selectedKey])
   useEffect(() => save('jn.sidebarWidth', width), [width])
   useEffect(() => save('jn.sidebarVisible', sidebarVisible), [sidebarVisible])
   useEffect(() => save('jn.pageModes', pageModes), [pageModes])
+  useEffect(() => save('jn.lastSection', lastSection), [lastSection])
+  useEffect(() => save('jn.lastPage', lastPage), [lastPage])
   useEffect(() => {
     save('jn.theme', theme)
     document.documentElement.dataset.theme = theme
     void api.setTheme(theme)
   }, [theme])
+
+  // Remember the section and page being viewed, to come back to them later.
+  useEffect(() => {
+    if (!selectedKey) return
+    const { notebook, section } = refOf(selectedKey)
+    if (section === undefined) return
+    const secKey = `${notebook}/${section}`
+    setLastSection((p) => (p[notebook] === secKey ? p : { ...p, [notebook]: secKey }))
+    if (kindOf(selectedKey) === 'page') setLastPage((p) => (p[secKey] === selectedKey ? p : { ...p, [secKey]: selectedKey }))
+  }, [selectedKey])
 
   // Errors that aren't shown inline appear as a toast for a few seconds.
   useEffect(() => {
@@ -60,18 +84,55 @@ export function App() {
     return () => clearTimeout(t)
   }, [toast])
 
-  const refresh = useCallback(async () => {
-    const r = await api.listTree()
-    if (!r.ok) return setToast(r.error.message)
-    setTree(r.data)
-    if (firstLoad.current) {
-      // First run: show every notebook open.
-      firstLoad.current = false
-      setExpanded(new Set(r.data.notebooks.map((n) => n.name)))
+  /**
+   * Where to land when opening a notebook or section: the section/page you
+   * were last on, else the first one.
+   */
+  const landing = useCallback((t: Tree, key: string): string => {
+    const { lastSection: ls, lastPage: lp } = remembered.current
+    let k = key
+    if (kindOf(k) === 'notebook') {
+      const nb = t.notebooks.find((n) => n.name === k)
+      if (!nb) return k
+      const remembered = ls[k]
+      if (remembered && existsIn(t, remembered)) k = remembered
+      else if (nb.sections[0]) k = `${nb.name}/${nb.sections[0].name}`
+      else return k
     }
-    // If the selected item vanished (deleted or renamed outside the app), fall back to its nearest parent.
-    setSelectedKey((k) => (k === null ? null : nearestExisting(r.data, k)))
+    if (kindOf(k) === 'section') {
+      const { notebook, section } = refOf(k)
+      const sec = t.notebooks.find((n) => n.name === notebook)?.sections.find((s) => s.name === section)
+      if (!sec) return k
+      const remembered = lp[k]
+      if (remembered && existsIn(t, remembered)) return remembered
+      if (sec.pages[0]) return `${k}/${sec.pages[0].name}`
+    }
+    return k
   }, [])
+
+  const refresh = useCallback(async (): Promise<Tree | null> => {
+    const r = await api.listTree()
+    if (!r.ok) {
+      setToast(r.error.message)
+      return null
+    }
+    const t = r.data
+    const isFirstLoad = firstLoad.current // read now: the updater below runs later
+    firstLoad.current = false
+    setTree(t)
+    setSelectedKey((k) => {
+      if (k !== null) {
+        if (existsIn(t, k)) return k
+        // The item vanished (deleted/renamed outside the app): go to what's left of it.
+        const near = nearestExisting(t, k)
+        return near === null ? null : landing(t, near)
+      }
+      // On start-up, reopen a notebook rather than showing nothing.
+      if (isFirstLoad && t.notebooks[0]) return landing(t, t.notebooks[0].name)
+      return null
+    })
+    return t
+  }, [landing])
 
   useEffect(() => {
     void refresh()
@@ -81,7 +142,16 @@ export function App() {
   // Unsaved edits are written before the window closes.
   useEffect(() => api.onBeforeClose(flushAllSaves), [])
 
-  const rows = useMemo(() => (tree ? visibleRows(tree, expanded) : []), [tree, expanded])
+  // ----- what's open -----
+  const openNotebookName = selectedKey ? refOf(selectedKey).notebook : null
+  const notebook = tree?.notebooks.find((n) => n.name === openNotebookName) ?? null
+  const selectedKind = selectedKey ? kindOf(selectedKey) : null
+  const sectionKey = selectedKey && selectedKind !== 'notebook' ? (selectedKind === 'page' ? parentOf(selectedKey) : selectedKey) : null
+  const section = sectionKey ? notebook?.sections.find((s) => s.name === nameOf(sectionKey)) ?? null : null
+  const pages: PageRow[] = useMemo(
+    () => (section && sectionKey ? section.pages.map((p) => ({ key: `${sectionKey}/${p.name}`, name: p.name, path: p.path, hasCanvas: p.hasCanvas })) : []),
+    [section, sectionKey]
+  )
 
   /** Toast for a failed result; returns true if it succeeded. */
   const check = (r: Result<unknown>): boolean => {
@@ -89,35 +159,39 @@ export function App() {
     return r.ok
   }
 
-  const toggle = useCallback((key: string, open?: boolean) => {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      const shouldOpen = open ?? !next.has(key)
-      if (shouldOpen) next.add(key)
-      else next.delete(key)
-      return next
-    })
-  }, [])
+  const openNotebook = (name: string) => {
+    setNotebookDialog(null)
+    if (tree) setSelectedKey(landing(tree, name))
+  }
+  const selectSection = (key: string) => {
+    if (tree) setSelectedKey(landing(tree, key))
+  }
 
-  const expand = (...keys: (string | null)[]) =>
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      for (const k of keys) if (k) next.add(k)
-      return next
-    })
-
+  // ----- create / rename -----
   const startCreate = (parentKey: string | null) => {
-    setSidebarVisible(true) // names are typed into the tree
+    if (parentKey === null) return setNotebookDialog({ mode: 'new' })
     // "New page" on a page means a sibling page in the same section.
-    const parent = parentKey && kindOf(parentKey) === 'page' ? parentOf(parentKey) : parentKey
-    if (parent) expand(parentOf(parent), parent)
-    setEditing({ mode: 'create', parentKey: parent, kind: childKindOf(parent), error: null })
+    const parent = kindOf(parentKey) === 'page' ? parentOf(parentKey)! : parentKey
+    const kind = kindOf(parent) === 'notebook' ? 'section' : 'page'
+    if (kind === 'page') setSidebarVisible(true) // page names are typed into the sidebar
+    setEditing({ mode: 'create', parentKey: parent, kind, error: null })
   }
 
   const startRename = (key: string) => {
-    expand(parentOf(key))
-    setSelectedKey(key)
+    if (kindOf(key) === 'notebook') return setNotebookDialog({ mode: 'rename', notebook: key })
+    if (kindOf(key) === 'page') {
+      setSidebarVisible(true)
+      setSelectedKey(key)
+    }
     setEditing({ mode: 'rename', key, error: null })
+  }
+
+  /** Keeps everything that refers to a renamed item pointing at its new name. */
+  const remapAll = (from: string, to: string) => {
+    setSelectedKey((k) => (k ? remapKey(k, from, to) : k))
+    setPageModes((prev) => Object.fromEntries(Object.entries(prev).map(([k, v]) => [remapKey(k, from, to), v])))
+    setLastSection((prev) => remapRecord(prev, from, to))
+    setLastPage((prev) => remapRecord(prev, from, to))
   }
 
   const submitEdit = async (value: string, viaBlur: boolean) => {
@@ -126,26 +200,15 @@ export function App() {
     let newKey: (name: string) => string
 
     if (editing.mode === 'create') {
-      const p = editing.parentKey ? refOf(editing.parentKey) : null
-      result =
-        editing.kind === 'notebook'
-          ? await api.createNotebook(value)
-          : editing.kind === 'section'
-            ? await api.createSection(p!.notebook, value)
-            : await api.createPage(p!.notebook, p!.section!, value)
-      newKey = (name) => (editing.parentKey ? `${editing.parentKey}/${name}` : name)
+      const p = refOf(editing.parentKey!)
+      result = editing.kind === 'section' ? await api.createSection(p.notebook, value) : await api.createPage(p.notebook, p.section!, value)
+      newKey = (name) => `${editing.parentKey}/${name}`
     } else {
       await flushAllSaves() // unsaved edits must land in the file before it moves
       const { notebook, section, page } = refOf(editing.key)
-      const kind = kindOf(editing.key)
-      result =
-        kind === 'notebook'
-          ? await api.renameNotebook(notebook, value)
-          : kind === 'section'
-            ? await api.renameSection(notebook, section!, value)
-            : await api.renamePage(notebook, section!, page!, value)
+      result = kindOf(editing.key) === 'section' ? await api.renameSection(notebook, section!, value) : await api.renamePage(notebook, section!, page!, value)
       const parent = parentOf(editing.key)
-      newKey = (name) => (parent ? `${parent}/${name}` : name)
+      newKey = (name) => `${parent}/${name}`
     }
 
     if (!result.ok) {
@@ -157,27 +220,45 @@ export function App() {
       return
     }
 
-    const name = typeof result.data === 'string' ? result.data : result.data.name
-    const key = newKey(name)
-    if (editing.mode === 'rename') {
-      const from = editing.key
-      setExpanded((prev) => new Set([...prev].map((k) => remapKey(k, from, key))))
-      setPageModes((prev) => Object.fromEntries(Object.entries(prev).map(([k, v]) => [remapKey(k, from, key), v])))
-    } else if (editing.kind !== 'page') {
-      expand(key)
-    }
+    const key = newKey(typeof result.data === 'string' ? result.data : result.data.name)
     setEditing(null)
-    setSelectedKey(key)
+    if (editing.mode === 'rename') remapAll(editing.key, key)
+    else setSelectedKey(key)
     await refresh()
   }
 
+  const createNotebook = async (name: string): Promise<EngineError | null> => {
+    const r = await api.createNotebook(name)
+    if (!r.ok) return r.error
+    setNotebookDialog(null)
+    await refresh()
+    setSelectedKey(r.data.name)
+    return null
+  }
+
+  const renameNotebook = async (oldName: string, name: string): Promise<EngineError | null> => {
+    await flushAllSaves()
+    const r = await api.renameNotebook(oldName, name)
+    if (!r.ok) return r.error
+    setNotebookDialog(null)
+    remapAll(oldName, r.data)
+    await refresh()
+    return null
+  }
+
+  // ----- delete -----
   const remove = async (key: string) => {
     await flushAllSaves()
-    const { notebook, section, page } = refOf(key)
+    const { notebook: nb, section: sec, page } = refOf(key)
     const kind = kindOf(key)
     const afterDelete = async () => {
-      setSelectedKey((k) => (k && isWithin(k, key) ? parentOf(key) : k))
-      await refresh()
+      const t = await refresh()
+      // Move to a neighbour of what was deleted (another page / section), or close the notebook.
+      setSelectedKey((k) => {
+        if (!k || !isWithin(k, key)) return k
+        const parent = parentOf(key)
+        return parent && t ? landing(t, parent) : null
+      })
     }
 
     if (kind === 'page') {
@@ -186,14 +267,13 @@ export function App() {
         message: `"${page}.md" will be permanently deleted from disk.`,
         confirmLabel: 'Delete page',
         onConfirm: async () => {
-          if (check(await api.deletePage(notebook, section!, page!))) await afterDelete()
+          if (check(await api.deletePage(nb, sec!, page!))) await afterDelete()
         }
       })
       return
     }
 
-    const del = (force: boolean) =>
-      kind === 'notebook' ? api.deleteNotebook(notebook, { force }) : api.deleteSection(notebook, section!, { force })
+    const del = (force: boolean) => (kind === 'notebook' ? api.deleteNotebook(nb, { force }) : api.deleteSection(nb, sec!, { force }))
     const r = await del(false)
     if (r.ok) return afterDelete()
     if (r.error.code !== 'NOT_EMPTY') return void check(r)
@@ -207,39 +287,42 @@ export function App() {
     })
   }
 
-  const actions: SidebarActions = {
-    toggle,
+  const showInFolder = async (key: string) => void check(await api.showInFolder(refOf(key)))
+  const openRootFolder = async () => void check(await api.openRootFolder())
+
+  const sidebarActions: SidebarActions = {
     select: setSelectedKey,
     startCreate,
     startRename,
     submitEdit: (v, b) => void submitEdit(v, b),
     cancelEdit: () => setEditing(null),
     remove: (k) => void remove(k),
-    openMenu: (x, y, key) => setMenu({ x, y, key }),
-    openRootFolder: async () => void check(await api.openRootFolder())
+    openMenu: (x, y, key) => setMenu({ x, y, key })
   }
 
   const menuItems = (key: string | null): (MenuItem | 'sep')[] => {
-    if (key === null) {
+    if (key === null) return [{ label: 'Open notebook…', onClick: () => setNotebookDialog({ mode: 'open' }) }]
+    const kind = kindOf(key)
+    if (kind === 'notebook') {
       return [
-        { label: 'New notebook', onClick: () => startCreate(null) },
-        { label: 'Open WikiBook folder', onClick: actions.openRootFolder }
+        { label: 'New section', onClick: () => startCreate(key) },
+        { label: 'Rename notebook…', onClick: () => startRename(key) },
+        { label: 'Show in file manager', onClick: () => void showInFolder(key) },
+        'sep',
+        { label: 'Delete notebook', danger: true, onClick: () => void remove(key) }
       ]
     }
-    const kind = kindOf(key)
-    const showInFolder = async () => void check(await api.showInFolder(refOf(key)))
     return [
-      kind === 'notebook'
-        ? { label: 'New section', onClick: () => startCreate(key) }
-        : { label: 'New page', onClick: () => startCreate(kind === 'section' ? key : parentOf(key)) },
+      { label: 'New page', onClick: () => startCreate(kind === 'section' ? key : parentOf(key)) },
+      ...(kind === 'section' ? [{ label: 'New section', onClick: () => startCreate(parentOf(key)) }] : []),
       { label: 'Rename', shortcut: 'F2', onClick: () => startRename(key) },
-      { label: 'Show in file manager', onClick: () => void showInFolder() },
+      { label: 'Show in file manager', onClick: () => void showInFolder(key) },
       'sep',
-      { label: 'Delete', shortcut: 'Del', danger: true, onClick: () => void remove(key) }
+      { label: kind === 'section' ? 'Delete section' : 'Delete page', shortcut: kind === 'page' ? 'Del' : undefined, danger: true, onClick: () => void remove(key) }
     ]
   }
 
-  const selectedKind = selectedKey ? kindOf(selectedKey) : null
+  // ----- page / whiteboard mode -----
   const mode: PageMode = selectedKey && selectedKind === 'page' ? (pageModes[selectedKey] ?? 'page') : 'page'
   const setMode = (m: PageMode) => {
     if (!selectedKey || selectedKind !== 'page') return
@@ -251,9 +334,6 @@ export function App() {
       return next
     })
   }
-  // Folders a ribbon "New page" / "New section" would go into.
-  const sectionKey = selectedKey && selectedKind !== 'notebook' ? (selectedKind === 'page' ? parentOf(selectedKey) : selectedKey) : null
-  const notebookKey = selectedKey ? refOf(selectedKey).notebook : null
 
   const startResize = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -273,34 +353,44 @@ export function App() {
   return (
     <div className="app-shell">
       <Ribbon
+        notebookKey={notebook?.name ?? null}
         sectionKey={sectionKey}
-        notebookKey={notebookKey}
         hasPage={selectedKind === 'page'}
         mode={mode}
         setMode={setMode}
         startCreate={startCreate}
+        onOpenNotebook={() => setNotebookDialog({ mode: 'open' })}
+        onRenameNotebook={() => notebook && startRename(notebook.name)}
+        onDeleteNotebook={() => notebook && void remove(notebook.name)}
+        onRevealNotebook={() => notebook && void showInFolder(notebook.name)}
         sidebarVisible={sidebarVisible}
         toggleSidebar={() => setSidebarVisible((v) => !v)}
         theme={theme}
         setTheme={setTheme}
         zoom={zoom}
         onZoom={(d) => setZoom(api.zoom(d))}
-        openRootFolder={actions.openRootFolder}
-        revealPage={async () => void (selectedKey && check(await api.showInFolder(refOf(selectedKey))))}
+        openRootFolder={() => void openRootFolder()}
+        revealPage={() => selectedKey && void showInFolder(selectedKey)}
       />
-      <div
-        className={`layout${sidebarVisible ? '' : ' no-sidebar'}`}
-        style={{ '--sidebar-width': `${sidebarVisible ? width : 0}px` } as React.CSSProperties}
-      >
-        {sidebarVisible && <Sidebar tree={tree} rows={rows} expanded={expanded} selectedKey={selectedKey} editing={editing} actions={actions} />}
-        <div
-          className="resizer"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-          onMouseDown={sidebarVisible ? startResize : undefined}
-          onDoubleClick={() => setWidth(260)}
-        />
+      <SectionTabs
+        notebook={notebook}
+        sectionKey={sectionKey}
+        editing={editing}
+        select={selectSection}
+        startCreate={startCreate}
+        startRename={startRename}
+        submitEdit={(v, b) => void submitEdit(v, b)}
+        cancelEdit={() => setEditing(null)}
+        openMenu={(x, y, key) => setMenu({ x, y, key })}
+        openNotebookPicker={() => setNotebookDialog({ mode: 'open' })}
+      />
+      <div className={`layout${sidebarVisible && notebook ? '' : ' no-sidebar'}`} style={{ '--sidebar-width': `${width}px` } as React.CSSProperties}>
+        {sidebarVisible && notebook && (
+          <>
+            <Sidebar sectionKey={sectionKey} sectionName={section?.name ?? null} pages={pages} selectedKey={selectedKey} editing={editing} actions={sidebarActions} />
+            <div className="resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" onMouseDown={startResize} onDoubleClick={() => setWidth(260)} />
+          </>
+        )}
         <PageView
           tree={tree}
           selectedKey={selectedKey}
@@ -310,11 +400,24 @@ export function App() {
           mode={mode}
           setMode={setMode}
           theme={theme}
+          onOpenNotebook={() => setNotebookDialog({ mode: 'open' })}
         />
       </div>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.key)} onClose={() => setMenu(null)} />}
       {confirm && <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />}
+      {notebookDialog && tree && (
+        <NotebookDialog
+          state={notebookDialog}
+          tree={tree}
+          openNotebook={notebook?.name ?? null}
+          onOpen={openNotebook}
+          onCreate={createNotebook}
+          onRename={renameNotebook}
+          setMode={setNotebookDialog}
+          onClose={() => setNotebookDialog(null)}
+        />
+      )}
       {toast && (
         <div className="toast" role="alert">
           <span>{toast}</span>

@@ -1,19 +1,23 @@
-// The left sidebar: a collapsible Notebook → Section → Page tree.
-// Rendered as a flat list of rows (indented by depth) so keyboard navigation
-// can simply walk the visible rows in order.
+// Left sidebar: the pages of the selected section (sections are the tabs above,
+// the notebook is chosen from File ▸ Open notebook).
 
 import React, { useEffect, useRef } from 'react'
-import type { Tree } from '../../../shared/types'
-import { kindOf, type Kind, type Row } from '../lib/tree'
-import { Chevron, Dots, NotebookIcon, PageIcon, Plus, SectionIcon } from './Icons'
+import type { Kind } from '../lib/tree'
+import { Dots, PageIcon, Plus } from './Icons'
 import { InlineInput } from './InlineInput'
 
 export type Editing =
   | { mode: 'rename'; key: string; error: string | null }
   | { mode: 'create'; parentKey: string | null; kind: Kind; error: string | null }
 
+export interface PageRow {
+  key: string
+  name: string
+  path: string
+  hasCanvas: boolean
+}
+
 export interface SidebarActions {
-  toggle(key: string, open?: boolean): void
   select(key: string): void
   startCreate(parentKey: string | null): void
   startRename(key: string): void
@@ -21,249 +25,172 @@ export interface SidebarActions {
   cancelEdit(): void
   remove(key: string): void
   openMenu(x: number, y: number, key: string | null): void
-  openRootFolder(): void
 }
 
 interface Props {
-  tree: Tree | null
-  rows: Row[]
-  expanded: Set<string>
+  /** The section whose pages are listed (null when the notebook has no sections). */
+  sectionKey: string | null
+  sectionName: string | null
+  pages: PageRow[]
   selectedKey: string | null
   editing: Editing | null
   actions: SidebarActions
 }
 
-const KIND_ICON = { notebook: NotebookIcon, section: SectionIcon, page: PageIcon }
-const CHILD_KIND: Record<'notebook' | 'section', string> = { notebook: 'section', section: 'page' }
-
-export function Sidebar({ tree, rows, expanded, selectedKey, editing, actions }: Props) {
+export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, actions }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Keep keyboard focus on the selected row when selection moves, and return
-  // focus to the tree after an inline edit closes.
+  // Keep keyboard focus on the selected page when moving with the arrow keys,
+  // and give it back after an inline rename/create closes.
   useEffect(() => {
     const list = listRef.current
     if (!list || editing || !selectedKey) return
     const active = document.activeElement
     if (active && active !== document.body && !list.contains(active)) return
-    list.querySelector<HTMLElement>(`[data-key="${CSS.escape(selectedKey)}"]`)?.focus({ preventScroll: false })
+    list.querySelector<HTMLElement>(`[data-key="${CSS.escape(selectedKey)}"]`)?.focus()
   }, [selectedKey, editing])
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (editing || rows.length === 0) return
-    const i = rows.findIndex((r) => r.key === selectedKey)
-    const row = rows[i]
-    const go = (j: number) => {
-      const target = rows[Math.max(0, Math.min(rows.length - 1, j))]
-      if (target) actions.select(target.key)
-    }
-    const handled = () => e.preventDefault()
-
+    if (editing || pages.length === 0) return
+    const i = pages.findIndex((p) => p.key === selectedKey)
+    const go = (j: number) => actions.select(pages[Math.max(0, Math.min(pages.length - 1, j))].key)
+    const current = pages[i]
     switch (e.key) {
       case 'ArrowDown':
-        handled()
+        e.preventDefault()
         return go(i < 0 ? 0 : i + 1)
       case 'ArrowUp':
-        handled()
+        e.preventDefault()
         return go(i < 0 ? 0 : i - 1)
       case 'Home':
-        handled()
+        e.preventDefault()
         return go(0)
       case 'End':
-        handled()
-        return go(rows.length - 1)
-      case 'ArrowRight':
-        handled()
-        if (!row || row.kind === 'page') return
-        if (!expanded.has(row.key)) return actions.toggle(row.key, true)
-        if (rows[i + 1]?.parentKey === row.key) return go(i + 1)
-        return
-      case 'ArrowLeft':
-        handled()
-        if (!row) return
-        if (row.kind !== 'page' && expanded.has(row.key)) return actions.toggle(row.key, false)
-        if (row.parentKey) return actions.select(row.parentKey)
-        return
-      case 'Enter':
-        handled()
-        if (row && row.kind !== 'page') actions.toggle(row.key)
-        return
+        e.preventDefault()
+        return go(pages.length - 1)
       case 'F2':
-        handled()
-        if (row) actions.startRename(row.key)
+        e.preventDefault()
+        if (current) actions.startRename(current.key)
         return
       case 'Delete':
-        handled()
-        if (row) actions.remove(row.key)
+        e.preventDefault()
+        if (current) actions.remove(current.key)
         return
       case 'ContextMenu': {
-        handled()
-        const el = listRef.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(row?.key ?? '')}"]`)
-        const r = el?.getBoundingClientRect()
-        actions.openMenu(r ? r.left + 24 : 40, r ? r.bottom : 80, row?.key ?? null)
+        e.preventDefault()
+        const r = listRef.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(current?.key ?? '')}"]`)?.getBoundingClientRect()
+        actions.openMenu(r ? r.left + 24 : 40, r ? r.bottom : 80, current?.key ?? sectionKey)
         return
       }
     }
   }
 
-  const createRow = (parentKey: string | null, depth: number) =>
-    editing?.mode === 'create' && editing.parentKey === parentKey ? (
-      <div className="row editing" style={{ '--depth': depth } as React.CSSProperties} key={`__new__${parentKey}`}>
-        <span className="chevron-space" />
-        <span className="icon">{React.createElement(KIND_ICON[editing.kind])}</span>
-        <InlineInput
-          initial=""
-          placeholder={`New ${editing.kind} name`}
-          error={editing.error}
-          onSubmit={actions.submitEdit}
-          onCancel={actions.cancelEdit}
-        />
-      </div>
-    ) : null
-
-  const focusable = selectedKey && rows.some((r) => r.key === selectedKey) ? selectedKey : rows[0]?.key
+  const creating = editing?.mode === 'create' && editing.kind === 'page' && editing.parentKey === sectionKey
+  const focusable = selectedKey && pages.some((p) => p.key === selectedKey) ? selectedKey : pages[0]?.key
 
   return (
-    <nav className="sidebar" aria-label="Notebooks">
+    <nav className="sidebar" aria-label="Pages">
       <div className="sidebar-header">
-        <span className="sidebar-title">Notebooks</span>
-        <button className="icon-btn" title="New notebook" aria-label="New notebook" onClick={() => actions.startCreate(null)}>
-          <Plus />
-        </button>
+        <span className="sidebar-title" title={sectionName ?? undefined}>
+          {sectionName ? `${sectionName} · Pages` : 'Pages'}
+        </span>
+        {sectionKey && (
+          <button className="icon-btn" title="New page" aria-label="New page" onClick={() => actions.startCreate(sectionKey)}>
+            <Plus />
+          </button>
+        )}
       </div>
 
       <div
         ref={listRef}
         className="tree"
-        role="tree"
-        aria-label="Notebooks, sections and pages"
+        role="listbox"
+        aria-label={sectionName ? `Pages in ${sectionName}` : 'Pages'}
         onKeyDown={onKeyDown}
         onContextMenu={(e) => {
-          if (e.target === e.currentTarget) {
+          if (e.target === e.currentTarget && sectionKey) {
             e.preventDefault()
-            actions.openMenu(e.clientX, e.clientY, null)
+            actions.openMenu(e.clientX, e.clientY, sectionKey)
           }
         }}
       >
-        {createRow(null, 0)}
+        {creating && (
+          <div className="row editing">
+            <span className="icon">
+              <PageIcon />
+            </span>
+            <InlineInput initial="" placeholder="New page name" error={editing.error} onSubmit={actions.submitEdit} onCancel={actions.cancelEdit} />
+          </div>
+        )}
 
-        {tree && tree.notebooks.length === 0 && !editing && (
+        {!sectionKey && <div className="tree-empty">Add a section (the <b>+</b> next to the section tabs) to start writing pages.</div>}
+        {sectionKey && pages.length === 0 && !creating && (
           <div className="tree-empty">
-            <p>No notebooks yet.</p>
-            <button className="primary" onClick={() => actions.startCreate(null)}>
-              Create a notebook
+            <p>No pages in this section yet.</p>
+            <button className="primary" onClick={() => actions.startCreate(sectionKey)}>
+              New page
             </button>
           </div>
         )}
 
-        {rows.map((row) => {
-          const isOpen = expanded.has(row.key)
-          const isRenaming = editing?.mode === 'rename' && editing.key === row.key
-          const Icon = KIND_ICON[row.kind]
+        {pages.map((p) => {
+          const renaming = editing?.mode === 'rename' && editing.key === p.key
           return (
-            <React.Fragment key={row.key}>
-              <div
-                className={`row ${row.kind}${row.key === selectedKey ? ' selected' : ''}`}
-                style={{ '--depth': row.depth } as React.CSSProperties}
-                role="treeitem"
-                aria-level={row.depth + 1}
-                aria-expanded={row.kind === 'page' ? undefined : isOpen}
-                aria-selected={row.key === selectedKey}
-                data-key={row.key}
-                tabIndex={row.key === focusable ? 0 : -1}
-                title={row.path}
-                onClick={() => {
-                  actions.select(row.key)
-                  if (row.kind !== 'page') actions.toggle(row.key)
-                }}
-                onDoubleClick={(e) => {
-                  // Double-click renames a page (folders already toggle on click).
-                  if (row.kind === 'page') {
-                    e.preventDefault()
-                    actions.startRename(row.key)
-                  }
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  actions.select(row.key)
-                  actions.openMenu(e.clientX, e.clientY, row.key)
-                }}
-              >
-                {row.kind === 'page' ? (
-                  <span className="chevron-space" />
-                ) : (
-                  <span
-                    className="chevron-hit"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      actions.toggle(row.key)
-                    }}
-                  >
-                    <Chevron open={isOpen} />
-                  </span>
-                )}
-                <span className="icon">
-                  <Icon />
-                </span>
-
-                {isRenaming ? (
-                  <InlineInput
-                    initial={row.name}
-                    placeholder={`${row.kind} name`}
-                    error={editing.error}
-                    onSubmit={actions.submitEdit}
-                    onCancel={actions.cancelEdit}
-                  />
-                ) : (
-                  <>
-                    <span className="name">{row.name}</span>
-                    {row.kind !== 'page' && !row.hasChildren && <span className="hint">empty</span>}
-                    <span className="row-actions">
-                      {row.kind !== 'page' && (
-                        <button
-                          className="icon-btn"
-                          tabIndex={-1}
-                          title={`New ${CHILD_KIND[row.kind]}`}
-                          aria-label={`New ${CHILD_KIND[row.kind]} in ${row.name}`}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            actions.startCreate(row.key)
-                          }}
-                        >
-                          <Plus />
-                        </button>
-                      )}
-                      <button
-                        className="icon-btn"
-                        tabIndex={-1}
-                        title="More actions"
-                        aria-label={`More actions for ${row.name}`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          actions.select(row.key)
-                          const r = e.currentTarget.getBoundingClientRect()
-                          actions.openMenu(r.left, r.bottom + 2, row.key)
-                        }}
-                      >
-                        <Dots />
-                      </button>
+            <div
+              key={p.key}
+              className={`row page${p.key === selectedKey ? ' selected' : ''}`}
+              role="option"
+              aria-selected={p.key === selectedKey}
+              data-key={p.key}
+              tabIndex={p.key === focusable ? 0 : -1}
+              title={p.path}
+              onClick={() => actions.select(p.key)}
+              onDoubleClick={(e) => {
+                e.preventDefault()
+                actions.startRename(p.key)
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                actions.select(p.key)
+                actions.openMenu(e.clientX, e.clientY, p.key)
+              }}
+            >
+              <span className="icon">
+                <PageIcon />
+              </span>
+              {renaming ? (
+                <InlineInput initial={p.name} placeholder="page name" error={editing.error} onSubmit={actions.submitEdit} onCancel={actions.cancelEdit} />
+              ) : (
+                <>
+                  <span className="name">{p.name}</span>
+                  {p.hasCanvas && (
+                    <span className="badge" title="This page has a whiteboard">
+                      ✎
                     </span>
-                  </>
-                )}
-              </div>
-              {row.kind !== 'page' && isOpen && createRow(row.key, row.depth + 1)}
-            </React.Fragment>
+                  )}
+                  <span className="row-actions">
+                    <button
+                      className="icon-btn"
+                      tabIndex={-1}
+                      title="More actions"
+                      aria-label={`More actions for ${p.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        actions.select(p.key)
+                        const r = e.currentTarget.getBoundingClientRect()
+                        actions.openMenu(r.left, r.bottom + 2, p.key)
+                      }}
+                    >
+                      <Dots />
+                    </button>
+                  </span>
+                </>
+              )}
+            </div>
           )
         })}
       </div>
-
-      <button className="sidebar-footer" title="Open the WikiBook folder in the file manager" onClick={actions.openRootFolder}>
-        <bdi dir="ltr">{tree?.root ?? '…'}</bdi>
-      </button>
     </nav>
   )
 }
-
-export const childKindOf = (parentKey: string | null): Kind =>
-  parentKey === null ? 'notebook' : kindOf(parentKey) === 'notebook' ? 'section' : 'page'

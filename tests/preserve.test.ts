@@ -24,6 +24,11 @@ describe('findUnsupported', () => {
     expect(findUnsupported('A note[^1]\n\n[^1]: hi')).toEqual(['footnotes'])
     expect(findUnsupported('See [x][ref]\n\n[ref]: https://a.b')).toEqual(['reference-style links'])
   })
+  it('accepts the colour / size / highlight tags the editor writes', () => {
+    expect(findUnsupported('<span style="color: #e06c75; font-size: 20px">x</span> <mark>y</mark> <mark style="background-color: #a5d6a7">z</mark>')).toEqual([])
+    expect(findUnsupported('<span class="x">x</span>')).toEqual(['HTML tags'])
+    expect(findUnsupported('<span style="position: fixed">x</span>')).toEqual(['HTML tags'])
+  })
   it('ignores normal text and anything inside code', () => {
     expect(findUnsupported('3 < 4 and 5 > 2, [[Wiki]] [link](u) [1]')).toEqual([])
     expect(findUnsupported('```html\n<div>x</div>\n```\n\nUse `<br>` tags')).toEqual([])

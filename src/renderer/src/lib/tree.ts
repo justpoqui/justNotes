@@ -6,17 +6,6 @@ import type { ItemRef, Tree } from '../../../shared/types'
 
 export type Kind = 'notebook' | 'section' | 'page'
 
-export interface Row {
-  key: string
-  kind: Kind
-  name: string
-  ref: ItemRef
-  depth: number
-  parentKey: string | null
-  hasChildren: boolean
-  path: string
-}
-
 export const keyOf = (ref: ItemRef): string =>
   [ref.notebook, ref.section, ref.page].filter((p) => p !== undefined).join('/')
 
@@ -46,34 +35,6 @@ export function remapKey(key: string, from: string, to: string): string {
 
 /** True if `key` is `ancestor` or inside it. */
 export const isWithin = (key: string, ancestor: string): boolean => key === ancestor || key.startsWith(ancestor + '/')
-
-/** Every row, in display order, that is visible given which folders are expanded. */
-export function visibleRows(tree: Tree, expanded: Set<string>): Row[] {
-  const rows: Row[] = []
-  for (const nb of tree.notebooks) {
-    const nbKey = nb.name
-    rows.push({ key: nbKey, kind: 'notebook', name: nb.name, ref: { notebook: nb.name }, depth: 0, parentKey: null, hasChildren: nb.sections.length > 0, path: nb.path })
-    if (!expanded.has(nbKey)) continue
-    for (const sec of nb.sections) {
-      const secKey = `${nbKey}/${sec.name}`
-      rows.push({ key: secKey, kind: 'section', name: sec.name, ref: { notebook: nb.name, section: sec.name }, depth: 1, parentKey: nbKey, hasChildren: sec.pages.length > 0, path: sec.path })
-      if (!expanded.has(secKey)) continue
-      for (const pg of sec.pages) {
-        rows.push({
-          key: `${secKey}/${pg.name}`,
-          kind: 'page',
-          name: pg.name,
-          ref: { notebook: nb.name, section: sec.name, page: pg.name },
-          depth: 2,
-          parentKey: secKey,
-          hasChildren: false,
-          path: pg.path
-        })
-      }
-    }
-  }
-  return rows
-}
 
 /** Does this key point at something that currently exists in the tree? */
 export function existsIn(tree: Tree, key: string): boolean {
