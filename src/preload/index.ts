@@ -21,7 +21,16 @@ const api: WikiApi = {
   createPage: call('createPage'),
   renamePage: call('renamePage'),
   deletePage: call('deletePage'),
-  openRootFolder: call('openRootFolder')
+  readPage: call('readPage'),
+  openRootFolder: call('openRootFolder'),
+  showInFolder: call('showInFolder'),
+  onChanged: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('wiki:changed', listener)
+    return () => {
+      ipcRenderer.removeListener('wiki:changed', listener)
+    }
+  }
 } as WikiApi
 
 contextBridge.exposeInMainWorld('wiki', api)

@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { FileEngine } from './fileEngine'
 import { registerIpc } from './ipc'
+import { watchFolder } from './watcher'
 
 // Notes live in ~/WikiBook/Notebooks. WIKIBOOK_ROOT overrides it (handy for testing).
 const root = process.env.WIKIBOOK_ROOT || path.join(os.homedir(), 'WikiBook', 'Notebooks')
@@ -35,8 +36,15 @@ function createWindow(): void {
   else win.loadFile(path.join(__dirname, '../renderer/index.html'))
 }
 
-app.whenReady().then(() => {
-  registerIpc(new FileEngine(root))
+app.whenReady().then(async () => {
+  const engine = new FileEngine(root)
+  await engine.ensureRoot().catch((err) => console.error(err))
+  registerIpc(engine)
+  // Tell every window when something in the WikiBook folder changes.
+  const stopWatching = watchFolder(engine.root, () => {
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('wiki:changed')
+  })
+  app.on('will-quit', stopWatching)
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

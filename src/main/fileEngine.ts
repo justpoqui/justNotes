@@ -12,6 +12,7 @@ import type {
   DeleteOptions,
   EngineError,
   ErrorCode,
+  ItemRef,
   NotebookInfo,
   PageInfo,
   SectionInfo,
@@ -230,17 +231,18 @@ export class FileEngine {
     return { name, path: dir, sections: [] }
   }
 
-  async renameNotebook(oldName: string, rawNew: string): Promise<void> {
+  async renameNotebook(oldName: string, rawNew: string): Promise<string> {
     const from = this.notebookDir(existingName(oldName, 'notebook'))
     const name = validateName(rawNew, 'notebook')
     await this.requireDir(from, `Notebook "${oldName}"`)
-    if (name === oldName) return
+    if (name === oldName) return name
     await this.assertFree(this.root, name, (e) => `A notebook named "${e}"`, oldName)
     try {
       await fs.rename(from, this.notebookDir(name))
     } catch (err) {
       wrapIo(err, `Renaming notebook "${oldName}"`)
     }
+    return name
   }
 
   async deleteNotebook(rawName: string, opts: DeleteOptions = {}): Promise<void> {
@@ -273,18 +275,19 @@ export class FileEngine {
     return { name, path: dir, pages: [] }
   }
 
-  async renameSection(nbRaw: string, oldName: string, rawNew: string): Promise<void> {
+  async renameSection(nbRaw: string, oldName: string, rawNew: string): Promise<string> {
     const nb = existingName(nbRaw, 'notebook')
     const from = this.sectionDir(nb, existingName(oldName, 'section'))
     const name = validateName(rawNew, 'section')
     await this.requireDir(from, `Section "${oldName}"`)
-    if (name === oldName) return
+    if (name === oldName) return name
     await this.assertFree(this.notebookDir(nb), name, (e) => `A section named "${e}" in "${nb}"`, oldName)
     try {
       await fs.rename(from, this.sectionDir(nb, name))
     } catch (err) {
       wrapIo(err, `Renaming section "${oldName}"`)
     }
+    return name
   }
 
   async deleteSection(nbRaw: string, rawName: string, opts: DeleteOptions = {}): Promise<void> {
@@ -320,14 +323,14 @@ export class FileEngine {
     return { name, path: file, hasCanvas: false }
   }
 
-  async renamePage(nbRaw: string, secRaw: string, oldRaw: string, rawNew: string): Promise<void> {
+  async renamePage(nbRaw: string, secRaw: string, oldRaw: string, rawNew: string): Promise<string> {
     const nb = existingName(nbRaw, 'notebook')
     const sec = existingName(secRaw, 'section')
     const oldName = existingName(oldRaw, 'page')
     const name = validateName(rawNew, 'page')
     const from = this.pageFile(nb, sec, oldName)
     if (!(await this.isFile(from))) throw new EngineFailure('NOT_FOUND', `Page "${oldName}" was not found on disk.`)
-    if (name === oldName) return
+    if (name === oldName) return name
     const secDir = this.sectionDir(nb, sec)
     await this.assertFree(secDir, name + PAGE_EXT, (e) => `A page named "${e.slice(0, -PAGE_EXT.length)}" in "${sec}"`, oldName + PAGE_EXT)
     await this.assertFree(secDir, name + CANVAS_EXT, (e) => `A whiteboard file named "${e}"`, oldName + CANVAS_EXT)
@@ -343,6 +346,7 @@ export class FileEngine {
     } catch (err) {
       wrapIo(err, `Renaming page "${oldName}"`)
     }
+    return name
   }
 
   async deletePage(nbRaw: string, secRaw: string, rawName: string): Promise<void> {
@@ -357,6 +361,37 @@ export class FileEngine {
     } catch (err) {
       wrapIo(err, `Deleting page "${name}"`)
     }
+  }
+
+  async readPage(nbRaw: string, secRaw: string, rawName: string): Promise<string> {
+    const file = this.pageFile(existingName(nbRaw, 'notebook'), existingName(secRaw, 'section'), existingName(rawName, 'page'))
+    try {
+      return await fs.readFile(file, 'utf8')
+    } catch (err) {
+      wrapIo(err, `Reading page "${rawName}"`)
+    }
+  }
+
+  /**
+   * Absolute path of a notebook, section or page (page → its .md file),
+   * checked to exist. Used for "Show in file manager".
+   */
+  async locate(ref: ItemRef): Promise<string> {
+    const nb = existingName(ref.notebook, 'notebook')
+    if (ref.section === undefined) {
+      const p = this.notebookDir(nb)
+      await this.requireDir(p, `Notebook "${nb}"`)
+      return p
+    }
+    const sec = existingName(ref.section, 'section')
+    if (ref.page === undefined) {
+      const p = this.sectionDir(nb, sec)
+      await this.requireDir(p, `Section "${sec}"`)
+      return p
+    }
+    const p = this.pageFile(nb, sec, existingName(ref.page, 'page'))
+    if (!(await this.isFile(p))) throw new EngineFailure('NOT_FOUND', `Page "${ref.page}" was not found on disk.`)
+    return p
   }
 
   // ---------- helpers ----------

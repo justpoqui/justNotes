@@ -32,11 +32,15 @@ export function registerIpc(engine: FileEngine): void {
     createPage: (nb, sec, name) => engine.createPage(nb, sec, name),
     renamePage: (nb, sec, oldName, newName) => engine.renamePage(nb, sec, oldName, newName),
     deletePage: (nb, sec, name) => engine.deletePage(nb, sec, name),
+    readPage: (nb, sec, name) => engine.readPage(nb, sec, name),
 
     openRootFolder: async () => {
       await engine.ensureRoot()
       const err = await shell.openPath(engine.root)
       if (err) throw new EngineFailure('IO_ERROR', `Could not open the folder: ${err}`)
+    },
+    showInFolder: async (ref) => {
+      shell.showItemInFolder(await engine.locate(ref))
     }
   }
 

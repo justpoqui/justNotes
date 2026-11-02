@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { EngineFailure, FileEngine, validateName } from '../src/main/fileEngine'
+import { watchFolder } from '../src/main/watcher'
 
 let root: string
 let engine: FileEngine
@@ -199,4 +200,46 @@ describe('FileEngine', () => {
     expect(tree.notebooks.map((n) => n.name)).toEqual(['N'])
     expect(tree.notebooks[0].sections[0].pages.map((p) => p.name)).toEqual(['Real'])
   })
+
+  it('rename returns the final, cleaned-up name', async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await engine.createPage('N', 'S', 'P')
+    expect(await engine.renamePage('N', 'S', 'P', '  Renamed.md ')).toBe('Renamed')
+    expect(await engine.renameNotebook('N', ' Notebook ')).toBe('Notebook')
+  })
+
+  it('reads page contents', async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await engine.createPage('N', 'S', 'P')
+    expect(await engine.readPage('N', 'S', 'P')).toBe('# P\n\n')
+    expect(await code(engine.readPage('N', 'S', 'Nope'))).toBe('NOT_FOUND')
+  })
+
+  it('locates items for "show in file manager"', async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await engine.createPage('N', 'S', 'P')
+    expect(await engine.locate({ notebook: 'N' })).toBe(path.join(engine.root, 'N'))
+    expect(await engine.locate({ notebook: 'N', section: 'S', page: 'P' })).toBe(path.join(engine.root, 'N', 'S', 'P.md'))
+    expect(await code(engine.locate({ notebook: 'N', section: 'Gone' }))).toBe('NOT_FOUND')
+    expect(await code(engine.locate({ notebook: '..' }))).toBe('INVALID_NAME')
+  })
 })
+
+describe('watchFolder', () => {
+  it('reports changes anywhere under the root, debounced', async () => {
+    await engine.ensureRoot()
+    let calls = 0
+    const stop = watchFolder(engine.root, () => calls++, 50)
+    await new Promise((r) => setTimeout(r, 50))
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await fs.writeFile(path.join(engine.root, 'N', 'S', 'x.md'), 'hi')
+    await new Promise((r) => setTimeout(r, 300))
+    stop()
+    expect(calls).toBe(1)
+  })
+})
+

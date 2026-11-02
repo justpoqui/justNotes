@@ -9,12 +9,32 @@ AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network call
 ~/WikiBook/Notebooks/<Notebook>/<Section>/<Page>.canvas.json   (whiteboard, later phase)
 ```
 
-## Status: Phase 1 (file engine)
+## Status
 
-- `src/main/fileEngine.ts`: create, rename and delete notebooks, sections and pages. This is the only code that touches the disk.
+**Phase 2 (sidebar tree)** is done:
+
+- Collapsible Notebook → Section → Page tree. It remembers which folders are open, the selected item and the sidebar width (drag the edge to resize; double-click resets).
+- Create and rename happen inline in the tree. Use the **+** and **⋯** buttons on hover, right-click, or the keyboard:
+
+  | Key | Action |
+  |---|---|
+  | ↑ / ↓, Home / End | Move through the tree |
+  | → / ← | Expand / collapse (or go to child / parent) |
+  | Enter | Expand or collapse a folder |
+  | F2, or double-click a page | Rename |
+  | Delete | Delete (always asks first for pages and non-empty folders) |
+  | Menu key | Open the context menu |
+
+- The right pane shows the selected page as read-only Markdown (the editor is Phase 3), or cards listing a notebook's sections or a section's pages.
+- The tree and the open page refresh on their own when files change outside the app, e.g. in Thunar or another editor.
+
+**Phase 1 (file engine)**:
+
+- `src/main/fileEngine.ts`: create, rename, delete and read notebooks, sections and pages. This is the only code that touches the disk.
+- `src/main/watcher.ts`: watches the WikiBook folder and tells the UI to refresh.
 - `src/main/ipc.ts`: exposes the engine over IPC. Every call returns `{ ok, data | error }`.
 - `src/preload/index.ts`: exposes `window.wiki` through `contextBridge` (contextIsolation on, nodeIntegration off, sandbox on).
-- `src/renderer/`: a bare-bones React test UI.
+- `src/renderer/`: the React UI (`components/Sidebar.tsx`, `components/PageView.tsx`, `App.tsx`).
 
 Rules the engine enforces:
 
@@ -35,11 +55,11 @@ drives and Windows.
 Requires Node.js 20+ (22 recommended):
 
 ```bash
-npm install
-npm run dev        # launches the app with hot reload
+./run.sh           # installs Node.js and packages if needed, then starts the app
 ```
 
-If Electron exits with a sandbox error on Chromebook Linux, run `npm run dev -- --noSandbox`.
+or by hand: `npm install && npm run dev`. If Electron exits with a sandbox error on
+Chromebook Linux, use `./run.sh --noSandbox`.
 
 To use a throwaway folder instead of `~/WikiBook/Notebooks`:
 

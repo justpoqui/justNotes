@@ -42,6 +42,15 @@ export interface Tree {
   notebooks: NotebookInfo[]
 }
 
+/** Points at a notebook (section/page omitted), a section (page omitted) or a page. */
+export interface ItemRef {
+  notebook: string
+  section?: string
+  page?: string
+}
+
+// Rename functions resolve to the final name (trimmed, ".md" removed).
+
 export interface DeleteOptions {
   /** Must be true to delete a folder that still has things in it. */
   force?: boolean
@@ -53,17 +62,28 @@ export interface WikiApi {
   listTree(): Promise<Result<Tree>>
 
   createNotebook(name: string): Promise<Result<NotebookInfo>>
-  renameNotebook(oldName: string, newName: string): Promise<Result<void>>
+  renameNotebook(oldName: string, newName: string): Promise<Result<string>>
   deleteNotebook(name: string, opts?: DeleteOptions): Promise<Result<void>>
 
   createSection(notebook: string, name: string): Promise<Result<SectionInfo>>
-  renameSection(notebook: string, oldName: string, newName: string): Promise<Result<void>>
+  renameSection(notebook: string, oldName: string, newName: string): Promise<Result<string>>
   deleteSection(notebook: string, name: string, opts?: DeleteOptions): Promise<Result<void>>
 
   createPage(notebook: string, section: string, name: string): Promise<Result<PageInfo>>
-  renamePage(notebook: string, section: string, oldName: string, newName: string): Promise<Result<void>>
+  renamePage(notebook: string, section: string, oldName: string, newName: string): Promise<Result<string>>
   deletePage(notebook: string, section: string, name: string): Promise<Result<void>>
+
+  /** Raw Markdown of a page. */
+  readPage(notebook: string, section: string, name: string): Promise<Result<string>>
 
   /** Opens the WikiBook folder in the system file manager. */
   openRootFolder(): Promise<Result<void>>
+  /** Opens the file manager with this notebook/section/page selected. */
+  showInFolder(ref: ItemRef): Promise<Result<void>>
+
+  /**
+   * Called (debounced) whenever something changes inside the WikiBook folder,
+   * whether by this app or by another program. Returns an unsubscribe function.
+   */
+  onChanged(callback: () => void): () => void
 }

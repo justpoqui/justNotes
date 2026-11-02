@@ -1,266 +1,261 @@
-// Phase 1 test harness: buttons to create / rename / delete notebooks, sections
-// and pages, plus a plain list of what is on disk. Not the real sidebar (Phase 2).
+// App shell: owns the tree data, selection, expanded folders and edit state,
+// and turns sidebar actions into file-engine calls.
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EngineError, Result, Tree } from '../../shared/types'
-
-type Dialog =
-  | {
-      type: 'prompt'
-      title: string
-      initial: string
-      submitLabel: string
-      /** Returns an error to show in the dialog, or null to close it. */
-      onSubmit: (value: string) => Promise<EngineError | null>
-    }
-  | { type: 'confirm'; title: string; message: string; confirmLabel: string; onConfirm: () => Promise<void> }
+import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog'
+import { ContextMenu, type MenuItem } from './components/ContextMenu'
+import { PageView } from './components/PageView'
+import { childKindOf, Sidebar, type Editing, type SidebarActions } from './components/Sidebar'
+import { load, save } from './lib/storage'
+import { isWithin, kindOf, nameOf, nearestExisting, parentOf, refOf, remapKey, visibleRows } from './lib/tree'
 
 const api = window.wiki
+const MIN_WIDTH = 180
+const MAX_WIDTH = 520
 
 function describeContents(c: EngineError['contents']): string {
-  if (!c) return ''
+  if (!c) return 'some files'
   const parts: string[] = []
-  if (c.sections) parts.push(`${c.sections} section${c.sections === 1 ? '' : 's'}`)
-  if (c.pages) parts.push(`${c.pages} page${c.pages === 1 ? '' : 's'}`)
-  if (c.otherFiles) parts.push(`${c.otherFiles} other file${c.otherFiles === 1 ? '' : 's'}`)
+  const n = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
+  if (c.sections) parts.push(n(c.sections, 'section'))
+  if (c.pages) parts.push(n(c.pages, 'page'))
+  if (c.otherFiles) parts.push(n(c.otherFiles, 'other file'))
   return parts.join(', ')
 }
 
-export function App(): React.JSX.Element {
+export function App() {
   const [tree, setTree] = useState<Tree | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [dialog, setDialog] = useState<Dialog | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(load<string[]>('jn.expanded', [])))
+  const [selectedKey, setSelectedKey] = useState<string | null>(() => load<string | null>('jn.selected', null))
+  const [editing, setEditing] = useState<Editing | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; key: string | null } | null>(null)
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const [width, setWidth] = useState(() => load('jn.sidebarWidth', 260))
+  const firstLoad = useRef(!localStorage.getItem('jn.expanded'))
+
+  useEffect(() => save('jn.expanded', [...expanded]), [expanded])
+  useEffect(() => save('jn.selected', selectedKey), [selectedKey])
+  useEffect(() => save('jn.sidebarWidth', width), [width])
+
+  // Errors that aren't shown inline appear as a toast for a few seconds.
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 6000)
+    return () => clearTimeout(t)
+  }, [toast])
 
   const refresh = useCallback(async () => {
     const r = await api.listTree()
-    if (r.ok) setTree(r.data)
-    else setError(r.error.message)
+    if (!r.ok) return setToast(r.error.message)
+    setTree(r.data)
+    if (firstLoad.current) {
+      // First run: show every notebook open.
+      firstLoad.current = false
+      setExpanded(new Set(r.data.notebooks.map((n) => n.name)))
+    }
+    // If the selected item vanished (deleted or renamed outside the app), fall back to its nearest parent.
+    setSelectedKey((k) => (k === null ? null : nearestExisting(r.data, k)))
   }, [])
 
   useEffect(() => {
     void refresh()
+    return api.onChanged(() => void refresh())
   }, [refresh])
 
-  /** Opens a name prompt; on success refreshes the list, on failure keeps the dialog open with the error. */
-  const askName = (title: string, submitLabel: string, initial: string, run: (name: string) => Promise<Result<unknown>>) =>
-    setDialog({
-      type: 'prompt',
-      title,
-      initial,
-      submitLabel,
-      onSubmit: async (value) => {
-        const r = await run(value)
-        await refresh()
-        return r.ok ? null : r.error
-      }
+  const rows = useMemo(() => (tree ? visibleRows(tree, expanded) : []), [tree, expanded])
+
+  /** Toast for a failed result; returns true if it succeeded. */
+  const check = (r: Result<unknown>): boolean => {
+    if (!r.ok) setToast(r.error.message)
+    return r.ok
+  }
+
+  const toggle = useCallback((key: string, open?: boolean) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      const shouldOpen = open ?? !next.has(key)
+      if (shouldOpen) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }, [])
+
+  const expand = (...keys: (string | null)[]) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      for (const k of keys) if (k) next.add(k)
+      return next
     })
 
-  /**
-   * Deletes something. If the engine says the folder isn't empty, asks for
-   * confirmation (listing what's inside) and retries with force.
-   */
-  const remove = async (label: string, run: (force: boolean) => Promise<Result<void>>, alwaysConfirm = false) => {
-    setError(null)
-    const doForce = async () => {
-      const r = await run(true)
-      if (!r.ok) setError(r.error.message)
+  const startCreate = (parentKey: string | null) => {
+    // "New page" on a page means a sibling page in the same section.
+    const parent = parentKey && kindOf(parentKey) === 'page' ? parentOf(parentKey) : parentKey
+    if (parent) expand(parentOf(parent), parent)
+    setEditing({ mode: 'create', parentKey: parent, kind: childKindOf(parent), error: null })
+  }
+
+  const startRename = (key: string) => {
+    expand(parentOf(key))
+    setSelectedKey(key)
+    setEditing({ mode: 'rename', key, error: null })
+  }
+
+  const submitEdit = async (value: string, viaBlur: boolean) => {
+    if (!editing) return
+    let result: Result<{ name: string } | string>
+    let newKey: (name: string) => string
+
+    if (editing.mode === 'create') {
+      const p = editing.parentKey ? refOf(editing.parentKey) : null
+      result =
+        editing.kind === 'notebook'
+          ? await api.createNotebook(value)
+          : editing.kind === 'section'
+            ? await api.createSection(p!.notebook, value)
+            : await api.createPage(p!.notebook, p!.section!, value)
+      newKey = (name) => (editing.parentKey ? `${editing.parentKey}/${name}` : name)
+    } else {
+      const { notebook, section, page } = refOf(editing.key)
+      const kind = kindOf(editing.key)
+      result =
+        kind === 'notebook'
+          ? await api.renameNotebook(notebook, value)
+          : kind === 'section'
+            ? await api.renameSection(notebook, section!, value)
+            : await api.renamePage(notebook, section!, page!, value)
+      const parent = parentOf(editing.key)
+      newKey = (name) => (parent ? `${parent}/${name}` : name)
+    }
+
+    if (!result.ok) {
+      // Enter keeps the box open so the name can be fixed; clicking away gives up.
+      if (viaBlur) {
+        setEditing(null)
+        setToast(result.error.message)
+      } else setEditing({ ...editing, error: result.error.message })
+      return
+    }
+
+    const name = typeof result.data === 'string' ? result.data : result.data.name
+    const key = newKey(name)
+    if (editing.mode === 'rename') {
+      const from = editing.key
+      setExpanded((prev) => new Set([...prev].map((k) => remapKey(k, from, key))))
+    } else if (editing.kind !== 'page') {
+      expand(key)
+    }
+    setEditing(null)
+    setSelectedKey(key)
+    await refresh()
+  }
+
+  const remove = async (key: string) => {
+    const { notebook, section, page } = refOf(key)
+    const kind = kindOf(key)
+    const afterDelete = async () => {
+      setSelectedKey((k) => (k && isWithin(k, key) ? parentOf(key) : k))
       await refresh()
     }
-    if (alwaysConfirm) {
-      setDialog({
-        type: 'confirm',
-        title: `Delete ${label}?`,
-        message: 'The file will be permanently removed from disk.',
-        confirmLabel: 'Delete',
-        onConfirm: doForce
+
+    if (kind === 'page') {
+      setConfirm({
+        title: `Delete page "${page}"?`,
+        message: `"${page}.md" will be permanently deleted from disk.`,
+        confirmLabel: 'Delete page',
+        onConfirm: async () => {
+          if (check(await api.deletePage(notebook, section!, page!))) await afterDelete()
+        }
       })
       return
     }
-    const r = await run(false)
-    if (r.ok) return refresh()
-    if (r.error.code === 'NOT_EMPTY') {
-      setDialog({
-        type: 'confirm',
-        title: `Delete ${label}?`,
-        message: `It still contains ${describeContents(r.error.contents)}. Everything inside will be permanently deleted from disk.`,
-        confirmLabel: 'Delete everything',
-        onConfirm: doForce
-      })
-    } else {
-      setError(r.error.message)
-      await refresh()
+
+    const del = (force: boolean) =>
+      kind === 'notebook' ? api.deleteNotebook(notebook, { force }) : api.deleteSection(notebook, section!, { force })
+    const r = await del(false)
+    if (r.ok) return afterDelete()
+    if (r.error.code !== 'NOT_EMPTY') return void check(r)
+    setConfirm({
+      title: `Delete ${kind} "${nameOf(key)}"?`,
+      message: `It contains ${describeContents(r.error.contents)}. Everything inside will be permanently deleted from disk.`,
+      confirmLabel: 'Delete everything',
+      onConfirm: async () => {
+        if (check(await del(true))) await afterDelete()
+      }
+    })
+  }
+
+  const actions: SidebarActions = {
+    toggle,
+    select: setSelectedKey,
+    startCreate,
+    startRename,
+    submitEdit: (v, b) => void submitEdit(v, b),
+    cancelEdit: () => setEditing(null),
+    remove: (k) => void remove(k),
+    openMenu: (x, y, key) => setMenu({ x, y, key }),
+    openRootFolder: async () => void check(await api.openRootFolder())
+  }
+
+  const menuItems = (key: string | null): (MenuItem | 'sep')[] => {
+    if (key === null) {
+      return [
+        { label: 'New notebook', onClick: () => startCreate(null) },
+        { label: 'Open WikiBook folder', onClick: actions.openRootFolder }
+      ]
     }
+    const kind = kindOf(key)
+    const showInFolder = async () => void check(await api.showInFolder(refOf(key)))
+    return [
+      kind === 'notebook'
+        ? { label: 'New section', onClick: () => startCreate(key) }
+        : { label: 'New page', onClick: () => startCreate(kind === 'section' ? key : parentOf(key)) },
+      { label: 'Rename', shortcut: 'F2', onClick: () => startRename(key) },
+      { label: 'Show in file manager', onClick: () => void showInFolder() },
+      'sep',
+      { label: 'Delete', shortcut: 'Del', danger: true, onClick: () => void remove(key) }
+    ]
+  }
+
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = width
+    const move = (ev: MouseEvent) => setWidth(Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startW + ev.clientX - startX)))
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      document.body.classList.remove('resizing')
+    }
+    document.body.classList.add('resizing')
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
   }
 
   return (
-    <div className="app">
-      <header>
-        <h1>justNotes · Phase 1 file engine</h1>
-        <div className="root">
-          Folder: <code>{tree?.root ?? '…'}</code>
-          <button onClick={() => void api.openRootFolder()}>Open in file manager</button>
-          <button onClick={() => void refresh()}>Refresh</button>
-        </div>
-      </header>
+    <div className="layout" style={{ '--sidebar-width': `${width}px` } as React.CSSProperties}>
+      <Sidebar tree={tree} rows={rows} expanded={expanded} selectedKey={selectedKey} editing={editing} actions={actions} />
+      <div
+        className="resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        onMouseDown={startResize}
+        onDoubleClick={() => setWidth(260)}
+      />
+      <PageView tree={tree} selectedKey={selectedKey} select={setSelectedKey} startCreate={startCreate} />
 
-      {error && (
-        <div className="error" role="alert">
-          {error}
-          <button onClick={() => setError(null)}>Dismiss</button>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.key)} onClose={() => setMenu(null)} />}
+      {confirm && <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />}
+      {toast && (
+        <div className="toast" role="alert">
+          <span>{toast}</span>
+          <button className="icon-btn" aria-label="Dismiss" onClick={() => setToast(null)}>
+            ×
+          </button>
         </div>
       )}
-
-      <div className="toolbar">
-        <button className="primary" onClick={() => askName('New notebook', 'Create', '', (n) => api.createNotebook(n))}>
-          + Notebook
-        </button>
-      </div>
-
-      {tree && tree.notebooks.length === 0 && <p className="empty">No notebooks yet. Create one to start.</p>}
-
-      <ul className="tree">
-        {tree?.notebooks.map((nb) => (
-          <li key={nb.name}>
-            <div className="row notebook">
-              <span className="label">📓 {nb.name}</span>
-              <button onClick={() => askName(`New section in "${nb.name}"`, 'Create', '', (n) => api.createSection(nb.name, n))}>
-                + Section
-              </button>
-              <button onClick={() => askName(`Rename notebook "${nb.name}"`, 'Rename', nb.name, (n) => api.renameNotebook(nb.name, n))}>
-                Rename
-              </button>
-              <button className="danger" onClick={() => void remove(`notebook "${nb.name}"`, (force) => api.deleteNotebook(nb.name, { force }))}>
-                Delete
-              </button>
-            </div>
-            <ul>
-              {nb.sections.length === 0 && <li className="empty">no sections</li>}
-              {nb.sections.map((sec) => (
-                <li key={sec.name}>
-                  <div className="row section">
-                    <span className="label">📁 {sec.name}</span>
-                    <button
-                      onClick={() =>
-                        askName(`New page in "${nb.name} / ${sec.name}"`, 'Create', '', (n) => api.createPage(nb.name, sec.name, n))
-                      }
-                    >
-                      + Page
-                    </button>
-                    <button
-                      onClick={() =>
-                        askName(`Rename section "${sec.name}"`, 'Rename', sec.name, (n) => api.renameSection(nb.name, sec.name, n))
-                      }
-                    >
-                      Rename
-                    </button>
-                    <button
-                      className="danger"
-                      onClick={() => void remove(`section "${sec.name}"`, (force) => api.deleteSection(nb.name, sec.name, { force }))}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                  <ul>
-                    {sec.pages.length === 0 && <li className="empty">no pages</li>}
-                    {sec.pages.map((pg) => (
-                      <li key={pg.name}>
-                        <div className="row page">
-                          <span className="label" title={pg.path}>
-                            📄 {pg.name}.md{pg.hasCanvas && ' (+ whiteboard)'}
-                          </span>
-                          <button
-                            onClick={() =>
-                              askName(`Rename page "${pg.name}"`, 'Rename', pg.name, (n) =>
-                                api.renamePage(nb.name, sec.name, pg.name, n)
-                              )
-                            }
-                          >
-                            Rename
-                          </button>
-                          <button
-                            className="danger"
-                            onClick={() => void remove(`page "${pg.name}"`, () => api.deletePage(nb.name, sec.name, pg.name), true)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      </ul>
-
-      {dialog && <DialogView dialog={dialog} close={() => setDialog(null)} />}
-    </div>
-  )
-}
-
-function DialogView({ dialog, close }: { dialog: Dialog; close: () => void }): React.JSX.Element {
-  const [value, setValue] = useState(dialog.type === 'prompt' ? dialog.initial : '')
-  const [err, setErr] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const submit = async () => {
-    setBusy(true)
-    try {
-      if (dialog.type === 'prompt') {
-        const e = await dialog.onSubmit(value)
-        if (e) setErr(e.message)
-        else close()
-      } else {
-        await dialog.onConfirm()
-        close()
-      }
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="backdrop" onMouseDown={close}>
-      <form
-        className="dialog"
-        onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.key === 'Escape' && close()}
-        onSubmit={(e) => {
-          e.preventDefault()
-          void submit()
-        }}
-      >
-        <h2>{dialog.title}</h2>
-        {dialog.type === 'prompt' ? (
-          <input
-            autoFocus
-            value={value}
-            onChange={(e) => {
-              setValue(e.target.value)
-              setErr(null)
-            }}
-            onFocus={(e) => e.target.select()}
-            placeholder="Name"
-          />
-        ) : (
-          <p>{dialog.message}</p>
-        )}
-        {err && <p className="dialog-error">{err}</p>}
-        <div className="actions">
-          <button type="button" onClick={close}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            autoFocus={dialog.type === 'confirm'}
-            className={dialog.type === 'confirm' ? 'danger' : 'primary'}
-            disabled={busy}
-          >
-            {dialog.type === 'prompt' ? dialog.submitLabel : dialog.confirmLabel}
-          </button>
-        </div>
-      </form>
     </div>
   )
 }
