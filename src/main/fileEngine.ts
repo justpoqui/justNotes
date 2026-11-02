@@ -113,7 +113,7 @@ export class FileEngine {
   private inside(...parts: string[]): string {
     const p = path.resolve(this.root, ...parts)
     if (p !== this.root && !p.startsWith(this.root + path.sep)) {
-      throw new EngineFailure('INVALID_NAME', 'That path points outside the WikiBook folder.')
+      throw new EngineFailure('INVALID_NAME', 'That path points outside the justNotes folder.')
     }
     return p
   }
@@ -216,7 +216,7 @@ export class FileEngine {
       }
       return { root: this.root, notebooks: notebooks.sort(byName) }
     } catch (err) {
-      wrapIo(err, 'Reading the WikiBook folder')
+      wrapIo(err, 'Reading the justNotes folder')
     }
   }
 
@@ -351,6 +351,87 @@ export class FileEngine {
       wrapIo(err, `Renaming page "${oldName}"`)
     }
     return name
+  }
+
+  /**
+   * Moves a page (and its whiteboard) into another section, in this notebook or
+   * another one. Images the page shows from its section's assets/ folder are
+   * copied to the new section (the originals stay, other pages may use them)
+   * and the links are updated. Resolves to the page's name.
+   */
+  async movePage(nbRaw: string, secRaw: string, pageRaw: string, toNbRaw: string, toSecRaw: string): Promise<string> {
+    const nb = existingName(nbRaw, 'notebook')
+    const sec = existingName(secRaw, 'section')
+    const name = existingName(pageRaw, 'page')
+    const toNb = existingName(toNbRaw, 'notebook')
+    const toSec = existingName(toSecRaw, 'section')
+    const from = this.pageFile(nb, sec, name)
+    if (!(await this.isFile(from))) throw new EngineFailure('NOT_FOUND', `Page "${name}" was not found on disk.`)
+    const fromDir = this.sectionDir(nb, sec)
+    const toDir = this.sectionDir(toNb, toSec)
+    if (fromDir === toDir) throw new EngineFailure('INVALID_NAME', `"${name}" is already in "${toSec}".`)
+    await this.requireDir(toDir, `Section "${toSec}"`)
+    await this.assertFree(toDir, name + PAGE_EXT, (e) => `A page named "${e.slice(0, -PAGE_EXT.length)}" in "${toSec}"`)
+    await this.assertFree(toDir, name + CANVAS_EXT, (e) => `A whiteboard file named "${e}" in "${toSec}"`)
+
+    const to = this.pageFile(toNb, toSec, name)
+    const fromCanvas = this.canvasFile(nb, sec, name)
+    try {
+      const text = await this.carryAssets(await fs.readFile(from, 'utf8'), fromDir, toDir)
+      await fs.writeFile(to, text, { encoding: 'utf8', flag: 'wx' })
+      if (await this.isFile(fromCanvas)) {
+        try {
+          await fs.rename(fromCanvas, this.canvasFile(toNb, toSec, name))
+        } catch (err) {
+          await fs.rm(to, { force: true }) // undo, so the page isn't left in two places
+          throw err
+        }
+      }
+      await fs.rm(from)
+    } catch (err) {
+      wrapIo(err, `Moving page "${name}"`)
+    }
+    return name
+  }
+
+  /** Copies images linked as ![..](assets/..) from one section to another; returns the updated Markdown. */
+  private async carryAssets(markdown: string, fromDir: string, toDir: string): Promise<string> {
+    const LINK = /(!\[[^\]]*\]\(<?)(\.\/)?(assets\/[^)\s>]+)/g
+    const renamed = new Map<string, string>()
+    for (const m of markdown.matchAll(LINK)) {
+      const rel = m[3]
+      if (renamed.has(rel)) continue
+      let decoded = rel
+      try {
+        decoded = decodeURI(rel)
+      } catch {
+        /* use as written */
+      }
+      const src = path.join(fromDir, decoded)
+      if (!src.startsWith(path.join(fromDir, ASSETS_DIR) + path.sep) || !(await this.isFile(src))) continue
+      const data = await fs.readFile(src)
+      const ext = path.extname(decoded)
+      const base = path.basename(decoded, ext)
+      const destDir = path.join(toDir, ASSETS_DIR)
+      await fs.mkdir(destDir, { recursive: true })
+      let finalName = ''
+      for (let i = 0; i < 10000 && !finalName; i++) {
+        const candidate = i === 0 ? `${base}${ext}` : `${base}-${i}${ext}`
+        const dest = path.join(destDir, candidate)
+        try {
+          await fs.writeFile(dest, data, { flag: 'wx' })
+          finalName = candidate
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+          // Same image already there (e.g. moved before): reuse it.
+          if ((await fs.readFile(dest)).equals(data)) finalName = candidate
+        }
+      }
+      if (!finalName) continue
+      const newRel = `${ASSETS_DIR}/${finalName}`
+      renamed.set(rel, rel.includes('%') ? encodeURI(newRel) : newRel)
+    }
+    return markdown.replace(LINK, (all, open: string, dot: string | undefined, rel: string) => (renamed.has(rel) ? `${open}${dot ?? ''}${renamed.get(rel)}` : all))
   }
 
   async deletePage(nbRaw: string, secRaw: string, rawName: string): Promise<void> {
@@ -536,7 +617,7 @@ export class FileEngine {
   }
 
   private async removeDir(dir: string, what: string): Promise<void> {
-    if (dir === this.root) throw new EngineFailure('INVALID_NAME', 'Refusing to delete the WikiBook root folder.')
+    if (dir === this.root) throw new EngineFailure('INVALID_NAME', 'Refusing to delete the justNotes root folder.')
     try {
       await fs.rm(dir, { recursive: true })
     } catch (err) {

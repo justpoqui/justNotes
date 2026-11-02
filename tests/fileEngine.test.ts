@@ -295,6 +295,50 @@ describe('FileEngine — whiteboards', () => {
   })
 })
 
+describe('FileEngine — moving pages', () => {
+  beforeEach(async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'A')
+    await engine.createSection('N', 'B')
+    await engine.createNotebook('M')
+    await engine.createSection('M', 'C')
+    await engine.createPage('N', 'A', 'P')
+  })
+  const dir = (...p: string[]) => path.join(engine.root, ...p)
+
+  it('moves a page with its whiteboard to another section', async () => {
+    await engine.writePage('N', 'A', 'P', '# P\n\nhello\n')
+    await engine.writeCanvas('N', 'A', 'P', '{"elements":[]}')
+    expect(await engine.movePage('N', 'A', 'P', 'N', 'B')).toBe('P')
+    expect(await fs.readdir(dir('N', 'A'))).toEqual([])
+    expect((await fs.readdir(dir('N', 'B'))).sort()).toEqual(['P.canvas.json', 'P.md'])
+    expect(await engine.readPage('N', 'B', 'P')).toBe('# P\n\nhello\n')
+  })
+
+  it('moves to another notebook, copying the images it uses', async () => {
+    const png = new Uint8Array([1, 2, 3])
+    const rel = await engine.saveAsset('N', 'A', 'my pic.png', png)
+    await engine.saveAsset('N', 'A', 'unused.png', png)
+    await engine.writePage('N', 'A', 'P', `# P\n\n![](${encodeURI(rel)})\n\n![x](./assets/my%20pic.png)\n`)
+    // an image with the same name but different content already exists at the destination
+    await fs.mkdir(dir('M', 'C', 'assets'))
+    await fs.writeFile(dir('M', 'C', 'assets', 'my pic.png'), 'other')
+    await engine.movePage('N', 'A', 'P', 'M', 'C')
+    expect(await engine.readPage('M', 'C', 'P')).toBe('# P\n\n![](assets/my%20pic-1.png)\n\n![x](./assets/my%20pic-1.png)\n')
+    expect([...(await fs.readFile(dir('M', 'C', 'assets', 'my pic-1.png')))]).toEqual([1, 2, 3])
+    expect(await fs.readdir(dir('N', 'A', 'assets'))).toContain('my pic.png') // originals kept
+    expect(await fs.readdir(dir('M', 'C', 'assets'))).not.toContain('unused.png')
+  })
+
+  it('refuses duplicates and no-op moves without changing anything', async () => {
+    await engine.createPage('N', 'B', 'p')
+    expect(await code(engine.movePage('N', 'A', 'P', 'N', 'B'))).toBe('DUPLICATE')
+    expect(await code(engine.movePage('N', 'A', 'P', 'N', 'A'))).toBe('INVALID_NAME')
+    expect(await code(engine.movePage('N', 'A', 'P', 'N', 'Nope'))).toBe('NOT_FOUND')
+    expect(await fs.readdir(dir('N', 'A'))).toEqual(['P.md'])
+  })
+})
+
 describe('watchFolder', () => {
   it('reports changes anywhere under the root, debounced', async () => {
     await engine.ensureRoot()

@@ -159,6 +159,8 @@ export function Ribbon(props: Props) {
             {t}
           </button>
         ))}
+        <span className="titlebar-drag" />
+        <WindowButtons />
       </div>
 
       <div className="rb-panel" role="tabpanel" aria-label={tab}>
@@ -172,7 +174,7 @@ export function Ribbon(props: Props) {
             </Group>
             <Group label="Files">
               <Btn icon={Ic.Reveal} label="Show notebook folder" wide disabled={!props.notebookKey} onClick={props.onRevealNotebook} />
-              <Btn icon={Ic.Folder} label="WikiBook folder" wide onClick={props.openRootFolder} />
+              <Btn icon={Ic.Folder} label="All notebooks folder" wide onClick={props.openRootFolder} />
             </Group>
           </>
         )}
@@ -356,13 +358,49 @@ export function Ribbon(props: Props) {
               <Btn icon={Ic.ZoomIn} label="Bigger" title="Zoom in (Ctrl+=)" onClick={() => props.onZoom('in')} />
             </Group>
             <Group label="Files">
-              <Btn icon={Ic.Folder} label="WikiBook folder" onClick={props.openRootFolder} wide />
+              <Btn icon={Ic.Folder} label="All notebooks folder" onClick={props.openRootFolder} wide />
               <Btn icon={Ic.Reveal} label="Show page file" disabled={!props.hasPage} onClick={props.revealPage} wide />
             </Group>
           </>
         )}
       </div>
     </header>
+  )
+}
+
+/** Minimise / maximise / close, drawn by the app since the system title bar is hidden. */
+function WindowButtons() {
+  const wc = window.wiki.windowControls
+  const [maximized, setMaximized] = useState(false)
+  useEffect(() => {
+    void wc.isMaximized().then(setMaximized)
+    return wc.onMaximizedChange(setMaximized)
+  }, [wc])
+  return (
+    <div className="window-buttons">
+      <button className="win-btn" title="Minimise" aria-label="Minimise" onClick={wc.minimize}>
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M2 6.5h8" stroke="currentColor" strokeWidth="1.2" />
+        </svg>
+      </button>
+      <button className="win-btn" title={maximized ? 'Restore' : 'Maximise'} aria-label={maximized ? 'Restore' : 'Maximise'} onClick={wc.toggleMaximize}>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+          {maximized ? (
+            <>
+              <rect x="2" y="3.5" width="6.5" height="6.5" />
+              <path d="M4 3.5V2h6v6H8.5" />
+            </>
+          ) : (
+            <rect x="2" y="2" width="8" height="8" />
+          )}
+        </svg>
+      </button>
+      <button className="win-btn close" title="Close" aria-label="Close" onClick={wc.close}>
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <path d="m2.5 2.5 7 7m0-7-7 7" stroke="currentColor" strokeWidth="1.2" />
+        </svg>
+      </button>
+    </div>
   )
 }
 

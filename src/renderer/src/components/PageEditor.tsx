@@ -172,7 +172,7 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
       shouldRerenderOnTransaction: false,
       autofocus: false,
       editorProps: {
-        attributes: { class: 'prose', spellcheck: 'true' },
+        attributes: { class: 'prose', spellcheck: 'false' },
         handlePaste: (_view, event) => {
           const files = [...(event.clipboardData?.files ?? [])].filter(isImageFile)
           if (files.length === 0) return false

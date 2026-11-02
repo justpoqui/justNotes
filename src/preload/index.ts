@@ -21,6 +21,7 @@ const api: WikiApi = {
   createPage: call('createPage'),
   renamePage: call('renamePage'),
   deletePage: call('deletePage'),
+  movePage: call('movePage'),
   readPage: call('readPage'),
   writePage: call('writePage'),
   readCanvas: call('readCanvas'),
@@ -46,6 +47,19 @@ const api: WikiApi = {
     ipcRenderer.on('app:flush-before-close', listener)
     return () => {
       ipcRenderer.removeListener('app:flush-before-close', listener)
+    }
+  },
+  windowControls: {
+    minimize: () => ipcRenderer.send('win:minimize'),
+    toggleMaximize: () => ipcRenderer.send('win:toggle-maximize'),
+    close: () => ipcRenderer.send('win:close'),
+    isMaximized: () => ipcRenderer.invoke('win:is-maximized'),
+    onMaximizedChange: (callback) => {
+      const listener = (_e: unknown, maximized: boolean) => callback(maximized)
+      ipcRenderer.on('win:maximized', listener)
+      return () => {
+        ipcRenderer.removeListener('win:maximized', listener)
+      }
     }
   },
   onChanged: (callback) => {

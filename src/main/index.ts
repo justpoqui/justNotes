@@ -1,13 +1,11 @@
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
-import os from 'node:os'
 import path from 'node:path'
 import { FileEngine } from './fileEngine'
 import { registerIpc } from './ipc'
 import { watchFolder } from './watcher'
+import { resolveNotesRoot } from './notesLocation'
 import { handleAppAssetProtocol, handleAssetProtocol, registerAssetScheme } from './assetProtocol'
 
-// Notes live in ~/WikiBook/Notebooks. WIKIBOOK_ROOT overrides it (handy for testing).
-const root = process.env.WIKIBOOK_ROOT || path.join(os.homedir(), 'WikiBook', 'Notebooks')
 
 registerAssetScheme()
 
@@ -20,16 +18,26 @@ function createWindow(): void {
     title: 'justNotes',
     show: false,
     backgroundColor: '#1e1f22', // dark from the first frame, no white flash
-    autoHideMenuBar: true, // the ribbon replaces it; press Alt to show the menu
+    // No system title bar: the app draws its own (justNotes name, tabs and
+    // minimise / maximise / close buttons in the ribbon's top row).
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      // Chromium's spellchecker downloads its dictionaries from Google on Linux;
+      // keep the app fully offline.
+      spellcheck: false
     }
   })
 
   win.once('ready-to-show', () => win.show())
+
+  // Keep the maximise/restore button in sync with the window.
+  const sendMaximized = () => win.webContents.send('win:maximized', win.isMaximized())
+  win.on('maximize', sendMaximized)
+  win.on('unmaximize', sendMaximized)
 
   // Before the window closes, let the page editor save any pending edits.
   // Gives up waiting after a few seconds so the window can never get stuck open.
@@ -64,14 +72,23 @@ function createWindow(): void {
   else win.loadFile(path.join(__dirname, '../renderer/index.html'))
 }
 
+// Window buttons for the custom title bar.
+ipcMain.on('win:minimize', (e) => BrowserWindow.fromWebContents(e.sender)?.minimize())
+ipcMain.on('win:toggle-maximize', (e) => {
+  const w = BrowserWindow.fromWebContents(e.sender)
+  if (w) w.isMaximized() ? w.unmaximize() : w.maximize()
+})
+ipcMain.on('win:close', (e) => BrowserWindow.fromWebContents(e.sender)?.close())
+ipcMain.handle('win:is-maximized', (e) => BrowserWindow.fromWebContents(e.sender)?.isMaximized() ?? false)
+
 app.whenReady().then(async () => {
   nativeTheme.themeSource = 'dark'
-  const engine = new FileEngine(root)
+  const engine = new FileEngine(await resolveNotesRoot())
   await engine.ensureRoot().catch((err) => console.error(err))
   registerIpc(engine)
   handleAssetProtocol(engine)
   handleAppAssetProtocol(path.join(__dirname, '../renderer'))
-  // Tell every window when something in the WikiBook folder changes.
+  // Tell every window when something in the notes folder changes.
   const stopWatching = watchFolder(engine.root, () => {
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send('wiki:changed')
   })

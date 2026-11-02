@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EngineError, Result, Tree } from '../../shared/types'
 import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog'
 import { ContextMenu, type MenuItem } from './components/ContextMenu'
+import { MoveDialog } from './components/MoveDialog'
 import { NotebookDialog, type NotebookDialogMode } from './components/NotebookDialog'
 import { PageView } from './components/PageView'
 import { Ribbon, type PageMode } from './components/Ribbon'
@@ -42,6 +43,8 @@ export function App() {
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null)
   const [notebookDialog, setNotebookDialog] = useState<NotebookDialogMode | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null) // non-error notices, e.g. "Moved …"
+  const [moving, setMoving] = useState<string | null>(null) // page key being moved
   const [width, setWidth] = useState(() => load('jn.sidebarWidth', 260))
   const [theme, setTheme] = useState<'dark' | 'light'>(() => load('jn.theme', 'dark'))
   const [sidebarVisible, setSidebarVisible] = useState(() => load('jn.sidebarVisible', true))
@@ -77,6 +80,12 @@ export function App() {
     if (kindOf(selectedKey) === 'page') setLastPage((p) => (p[secKey] === selectedKey ? p : { ...p, [secKey]: selectedKey }))
   }, [selectedKey])
 
+  useEffect(() => {
+    if (!info) return
+    const t = setTimeout(() => setInfo(null), 4000)
+    return () => clearTimeout(t)
+  }, [info])
+
   // Errors that aren't shown inline appear as a toast for a few seconds.
   useEffect(() => {
     if (!toast) return
@@ -95,7 +104,7 @@ export function App() {
       const nb = t.notebooks.find((n) => n.name === k)
       if (!nb) return k
       const remembered = ls[k]
-      if (remembered && existsIn(t, remembered)) k = remembered
+      if (remembered && isWithin(remembered, k) && existsIn(t, remembered)) k = remembered
       else if (nb.sections[0]) k = `${nb.name}/${nb.sections[0].name}`
       else return k
     }
@@ -104,7 +113,8 @@ export function App() {
       const sec = t.notebooks.find((n) => n.name === notebook)?.sections.find((s) => s.name === section)
       if (!sec) return k
       const remembered = lp[k]
-      if (remembered && existsIn(t, remembered)) return remembered
+      // (a page moved elsewhere no longer counts as "last page here")
+      if (remembered && isWithin(remembered, k) && existsIn(t, remembered)) return remembered
       if (sec.pages[0]) return `${k}/${sec.pages[0].name}`
     }
     return k
@@ -287,6 +297,23 @@ export function App() {
     })
   }
 
+  // ----- move a page to another section -----
+  const movePage = async (key: string, toNotebook: string, toSection: string): Promise<EngineError | null> => {
+    await flushAllSaves() // unsaved edits go with the page
+    const { notebook: nb, section: sec, page } = refOf(key)
+    const r = await api.movePage(nb, sec!, page!, toNotebook, toSection)
+    if (!r.ok) return r.error
+    setMoving(null)
+    const newKey = `${toNotebook}/${toSection}/${r.data}`
+    const wasOpen = selectedKey === key
+    remapAll(key, newKey)
+    const t = await refresh()
+    // Stay in this section (you may be tidying several pages); open its next page.
+    if (wasOpen && t) setSelectedKey(landing(t, `${nb}/${sec}`))
+    setInfo(`Moved "${page}" to ${toNotebook === nb ? '' : `${toNotebook} › `}${toSection}`)
+    return null
+  }
+
   const showInFolder = async (key: string) => void check(await api.showInFolder(refOf(key)))
   const openRootFolder = async () => void check(await api.openRootFolder())
 
@@ -316,6 +343,7 @@ export function App() {
       { label: 'New page', onClick: () => startCreate(kind === 'section' ? key : parentOf(key)) },
       ...(kind === 'section' ? [{ label: 'New section', onClick: () => startCreate(parentOf(key)) }] : []),
       { label: 'Rename', shortcut: 'F2', onClick: () => startRename(key) },
+      ...(kind === 'page' ? [{ label: 'Move…', onClick: () => setMoving(key) }] : []),
       { label: 'Show in file manager', onClick: () => void showInFolder(key) },
       'sep',
       { label: kind === 'section' ? 'Delete section' : 'Delete page', shortcut: kind === 'page' ? 'Del' : undefined, danger: true, onClick: () => void remove(key) }
@@ -417,6 +445,17 @@ export function App() {
           setMode={setNotebookDialog}
           onClose={() => setNotebookDialog(null)}
         />
+      )}
+      {moving && tree && (
+        <MoveDialog tree={tree} pageKey={moving} onMove={(nb, sec) => movePage(moving, nb, sec)} onClose={() => setMoving(null)} />
+      )}
+      {info && !toast && (
+        <div className="toast info" role="status">
+          <span>{info}</span>
+          <button className="icon-btn" aria-label="Dismiss" onClick={() => setInfo(null)}>
+            ×
+          </button>
+        </div>
       )}
       {toast && (
         <div className="toast" role="alert">

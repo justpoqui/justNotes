@@ -34,6 +34,7 @@ export function registerIpc(engine: FileEngine): void {
     createPage: (nb, sec, name) => engine.createPage(nb, sec, name),
     renamePage: (nb, sec, oldName, newName) => engine.renamePage(nb, sec, oldName, newName),
     deletePage: (nb, sec, name) => engine.deletePage(nb, sec, name),
+    movePage: (nb, sec, name, toNb, toSec) => engine.movePage(nb, sec, name, toNb, toSec),
     readPage: (nb, sec, name) => engine.readPage(nb, sec, name),
     writePage: (nb, sec, name, content) => engine.writePage(nb, sec, name, content),
     readCanvas: (nb, sec, name) => engine.readCanvas(nb, sec, name),

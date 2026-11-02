@@ -463,3 +463,31 @@ button.danger-fill { background: var(--danger); border-color: var(--danger); col
 /* highlighted text stays readable in the dark theme */
 .prose mark { background-color: #f6e58d; color: #1f1f1f !important; border-radius: 3px; padding: 0 2px; }
 .prose mark a, .prose mark code { color: #1f1f1f; }
+
+/* ---------- move dialog / info toast ---------- */
+.move-dialog { width: min(460px, calc(100vw - 32px)); }
+.move-dialog .muted { margin: 0 0 12px; font-size: 13px; }
+.move-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.move-field > span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.move-sections { display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; }
+.move-section { display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 12px; border-radius: 8px; }
+.move-section .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tab-color); flex: none; }
+.move-section .move-name { flex: 1; font-weight: 500; }
+.move-section .muted { margin: 0; font-size: 12px; }
+.move-section.selected { border-color: var(--accent); background: var(--selected); }
+.move-section:disabled { opacity: 0.5; cursor: default; }
+.toast.info { background: var(--menu-bg); color: var(--fg); border: 1px solid var(--border); }
+.toast.info .icon-btn { color: var(--muted); }
+
+/* ---------- custom title bar (top row of the ribbon) ---------- */
+/* The empty parts of the row drag the window; buttons and tabs stay clickable. */
+.rb-tabs { -webkit-app-region: drag; padding-right: 0; }
+.rb-tabs button, .rb-tabs .window-buttons { -webkit-app-region: no-drag; }
+.titlebar-drag { flex: 1; align-self: stretch; }
+.window-buttons { display: flex; align-self: stretch; }
+.win-btn {
+  width: 46px; border: none; border-radius: 0; padding: 0; display: grid; place-items: center;
+  color: var(--muted); background: transparent;
+}
+.win-btn:hover { background: var(--hover); color: var(--fg); }
+.win-btn.close:hover { background: #e81123; color: #fff; }

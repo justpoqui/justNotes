@@ -72,6 +72,8 @@ export interface WikiApi {
   createPage(notebook: string, section: string, name: string): Promise<Result<PageInfo>>
   renamePage(notebook: string, section: string, oldName: string, newName: string): Promise<Result<string>>
   deletePage(notebook: string, section: string, name: string): Promise<Result<void>>
+  /** Moves a page (with its whiteboard and images) to another section. Resolves to its name. */
+  movePage(notebook: string, section: string, name: string, toNotebook: string, toSection: string): Promise<Result<string>>
 
   /** Raw Markdown of a page. */
   readPage(notebook: string, section: string, name: string): Promise<Result<string>>
@@ -93,16 +95,26 @@ export interface WikiApi {
   /** Makes native parts of the window (menus, dialogs, scrollbars) follow the app theme. */
   setTheme(theme: 'dark' | 'light'): Promise<Result<void>>
 
-  /** Opens the WikiBook folder in the system file manager. */
+  /** Opens the justNotes folder in the system file manager. */
   openRootFolder(): Promise<Result<void>>
   /** Opens the file manager with this notebook/section/page selected. */
   showInFolder(ref: ItemRef): Promise<Result<void>>
 
   /**
-   * Called (debounced) whenever something changes inside the WikiBook folder,
+   * Called (debounced) whenever something changes inside the justNotes folder,
    * whether by this app or by another program. Returns an unsubscribe function.
    */
   onChanged(callback: () => void): () => void
+  /** The buttons of the app's own title bar. */
+  windowControls: {
+    minimize(): void
+    toggleMaximize(): void
+    /** Closes the window (pending edits are saved first). */
+    close(): void
+    isMaximized(): Promise<boolean>
+    onMaximizedChange(callback: (maximized: boolean) => void): () => void
+  }
+
   /** `flush` runs (and is awaited) before the window closes. Returns an unsubscribe function. */
   onBeforeClose(flush: () => Promise<void>): () => void
 }

@@ -5,11 +5,20 @@ on disk), OneNote-style organization (Notebook → Section → Page), and later 
 AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network calls.
 
 ```
-~/WikiBook/Notebooks/<Notebook>/<Section>/<Page>.md
-~/WikiBook/Notebooks/<Notebook>/<Section>/<Page>.canvas.json   (whiteboard, later phase)
+~/Documents/justNotes/<Notebook>/<Section>/<Page>.md
+~/Documents/justNotes/<Notebook>/<Section>/<Page>.canvas.json   (whiteboard)
 ```
 
 ## Status
+
+**Moving pages, own title bar, notes folder renamed:**
+
+- **Moving pages.** Use **Move…** in a page's ⋯ menu (or right-click a page) to send it to another section in this notebook or another one.
+  - Its whiteboard goes with it.
+  - Images it shows are copied to the new section's `assets/` folder and the links updated. The originals stay in place, since other pages may use them.
+- **Own title bar.** The system's white title bar is gone. Minimise, maximise and close are at the top-right of the app's dark top bar, and that bar is also where you drag the window. Close saves any unsaved edits first.
+- **Notes folder renamed.** Notes now live in `~/Documents/justNotes`. On first start the old `~/WikiBook/Notebooks` is moved there in a single step. It never overwrites an existing folder, and if the move fails the app keeps using the old one.
+- **Spellchecker off.** Chromium's spellchecker downloads its dictionaries from Google, so it's turned off to keep the app fully offline.
 
 **One notebook at a time, section tabs, text colour/size/highlight** are done:
 
@@ -37,7 +46,7 @@ AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network call
   - **Home:** undo/redo, bold, italic, strike, code, clear formatting, style gallery (Normal, Heading 1–3), bullets, numbering, to-do, quote, indent/outdent.
   - **Insert:** new page, section or notebook; table, picture, code block, divider, link.
   - **Draw:** page/whiteboard switch and whiteboard tools (select, pan, pen, box, circle, arrow, text, picture, eraser).
-  - **View:** show/hide the sidebar, dark/light theme, zoom, open the WikiBook folder, show the page file.
+  - **View:** show/hide the sidebar, dark/light theme, zoom, open the justNotes folder, show the page file.
 - **Dark theme** is the default: soft greys, off-white text and a gentle blue accent. Light is available under View.
 - **Still fully offline:** the whiteboard's fonts are bundled with the app. Excalidraw's built-in download from the internet is removed at build time (`electron.vite.config.ts`). The automated test checks that no network requests are made.
 
@@ -77,11 +86,11 @@ AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network call
 **Phase 1 (file engine)**:
 
 - `src/main/fileEngine.ts`: create, rename, delete and read notebooks, sections and pages. This is the only code that touches the disk.
-- `src/main/watcher.ts`: watches the WikiBook folder and tells the UI to refresh.
+- `src/main/watcher.ts`: watches the justNotes folder and tells the UI to refresh.
 - `src/main/ipc.ts`: exposes the engine over IPC. Every call returns `{ ok, data | error }`.
 - `src/preload/index.ts`: exposes `window.wiki` through `contextBridge` (contextIsolation on, nodeIntegration off, sandbox on).
 - `src/renderer/`: the React UI (`components/Sidebar.tsx`, `components/PageView.tsx`, `components/PageEditor.tsx`, `App.tsx`). The editor's extensions and Markdown handling are in `src/renderer/src/editor/`.
-- `src/main/assetProtocol.ts`: serves images from inside the WikiBook folder to the editor (`wiki-file://`), and nothing else.
+- `src/main/assetProtocol.ts`: serves images from inside the justNotes folder to the editor (`wiki-file://`), and nothing else.
 
 Rules the engine enforces:
 
@@ -110,10 +119,10 @@ For development with hot reload use `npm run dev`. The packaged build (`./run.sh
 or by hand: `npm install && npm run dev`. If Electron exits with a sandbox error on
 Chromebook Linux, use `./run.sh --noSandbox`.
 
-To use a throwaway folder instead of `~/WikiBook/Notebooks`:
+To use a throwaway folder instead of `~/Documents/justNotes`:
 
 ```bash
-WIKIBOOK_ROOT=/tmp/wikibook-test npm run dev
+JUSTNOTES_ROOT=/tmp/justnotes-test ./run.sh
 ```
 
 Other scripts: `npm test` (engine unit tests), `npm run typecheck`, `npm run build`.
