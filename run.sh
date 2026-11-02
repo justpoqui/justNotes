@@ -8,4 +8,9 @@ if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split("."
   sudo apt install -y nodejs
 fi
 [ -d node_modules ] || npm install
+# Electron downloads its program in a separate step that sometimes gets skipped or fails.
+if [ ! -f node_modules/electron/path.txt ]; then
+  echo "Downloading Electron..."
+  node node_modules/electron/install.js
+fi
 npm run dev -- "$@" || { echo; echo "If it failed with a sandbox error, run: ./run.sh --noSandbox"; exit 1; }
