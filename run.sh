@@ -7,7 +7,7 @@ if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split("."
   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
   sudo apt install -y nodejs
 fi
-[ -d node_modules ] || npm install
+if [ ! -d node_modules ] || [ package.json -nt node_modules/.package-lock.json ]; then npm install; fi
 # Electron downloads its program in a separate step that sometimes gets skipped or fails.
 if [ ! -f node_modules/electron/path.txt ]; then
   echo "Downloading Electron..."
