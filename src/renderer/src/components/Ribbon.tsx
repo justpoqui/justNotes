@@ -30,6 +30,7 @@ interface Props {
   onRenameNotebook(): void
   onDeleteNotebook(): void
   onRevealNotebook(): void
+  onOpenSettings(): void
 }
 
 const TABS = ['File', 'Home', 'Insert', 'Draw', 'View'] as const
@@ -55,6 +56,7 @@ const HIGHLIGHTS = [
   ['Orange', '#f8cf9c', '#f8cf9c'],
   ['Purple', '#d4c2f5', '#d4c2f5']
 ] as const
+const GENERIC_FONTS = ['sans-serif', 'serif', 'monospace']
 const FONT_SIZES = ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '40px']
 type Tab = (typeof TABS)[number]
 
@@ -108,6 +110,23 @@ function Btn({
   )
 }
 
+/** Small square button for the two-row groups (Font, Paragraph). */
+function Mini({ label, icon: Icon, cls = '', title, active = false, disabled = false, onClick }: { label?: string; icon?: React.ComponentType; cls?: string; title: string; active?: boolean; disabled?: boolean; onClick(): void }) {
+  return (
+    <button
+      className={`rb-mini ${cls}${active ? ' active' : ''}`}
+      title={title}
+      aria-label={title}
+      aria-pressed={active}
+      disabled={disabled}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+    >
+      {Icon ? <Icon /> : label}
+    </button>
+  )
+}
+
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="rb-group" role="group" aria-label={label}>
@@ -120,7 +139,11 @@ function Group({ label, children }: { label: string; children: React.ReactNode }
 export function Ribbon(props: Props) {
   const [tab, setTab] = useState<Tab>(() => load<Tab>('jn.ribbonTab', 'Home'))
   useEffect(() => save('jn.ribbonTab', tab), [tab])
-  const { editor, board, insertImage } = useActivePage()
+  const { editor, board, insertImage, openFind, exportPdf, print } = useActivePage()
+  const [fonts, setFonts] = useState<string[]>([])
+  useEffect(() => {
+    void window.wiki.listFonts().then((r) => r.ok && setFonts(r.data))
+  }, [])
   useEditorTick(editor)
 
   // A drawing tool picked while in page mode is applied once the whiteboard has loaded.
@@ -160,6 +183,9 @@ export function Ribbon(props: Props) {
           </button>
         ))}
         <span className="titlebar-drag" />
+        <button className="win-btn" title="Settings (Ctrl+,)" aria-label="Settings" onClick={props.onOpenSettings}>
+          <Ic.Gear />
+        </button>
         <WindowButtons />
       </div>
 
@@ -172,9 +198,16 @@ export function Ribbon(props: Props) {
               <Btn icon={Ic.Rename} label="Rename" disabled={!props.notebookKey} onClick={props.onRenameNotebook} />
               <Btn icon={Ic.Trash} label="Delete" disabled={!props.notebookKey} onClick={props.onDeleteNotebook} />
             </Group>
+            <Group label="Page">
+              <Btn icon={Ic.Pdf} label="Export PDF" wide disabled={!exportPdf || props.mode !== 'page'} title="Save the open page as a PDF" onClick={() => exportPdf?.()} />
+              <Btn icon={Ic.Printer} label="Print" disabled={!print || props.mode !== 'page'} title="Print the open page" onClick={() => print?.()} />
+            </Group>
             <Group label="Files">
               <Btn icon={Ic.Reveal} label="Show notebook folder" wide disabled={!props.notebookKey} onClick={props.onRevealNotebook} />
               <Btn icon={Ic.Folder} label="All notebooks folder" wide onClick={props.openRootFolder} />
+            </Group>
+            <Group label="Options">
+              <Btn icon={Ic.Gear} label="Settings" title="Settings (Ctrl+,)" onClick={props.onOpenSettings} />
             </Group>
           </>
         )}
@@ -182,44 +215,58 @@ export function Ribbon(props: Props) {
         {tab === 'Home' && (
           <>
             <Group label="History">
-              <Btn icon={Ic.Undo} label="Undo" title="Undo (Ctrl+Z)" disabled={!ed && !(props.mode === 'board' && board)} onClick={() => (ed ? chain().undo().run() : board?.undo())} />
+              <Btn icon={Ic.Undo} label="Undo" title="Undo (Ctrl+Z)" disabled={!ed && !(props.mode === 'board' && board)} onClick={() => (ed ? (ed.commands.revertAutoChange() ? undefined : chain().undo().run()) : board?.undo())} />
               <Btn icon={Ic.Redo} label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!ed && !(props.mode === 'board' && board)} onClick={() => (ed ? chain().redo().run() : board?.redo())} />
             </Group>
-            <Group label="Text">
-              <div className="rb-grid">
-                <button className={`rb-mini b${is('bold') ? ' active' : ''}`} title="Bold (Ctrl+B)" disabled={!ed} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleBold().run()}>
-                  B
-                </button>
-                <button className={`rb-mini i${is('italic') ? ' active' : ''}`} title="Italic (Ctrl+I)" disabled={!ed} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleItalic().run()}>
-                  I
-                </button>
-                <button className={`rb-mini s${is('strike') ? ' active' : ''}`} title="Strikethrough (Ctrl+Shift+S)" disabled={!ed} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleStrike().run()}>
-                  S
-                </button>
-                <button className={`rb-mini code${is('code') ? ' active' : ''}`} title="Inline code (Ctrl+E)" disabled={!ed} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleCode().run()}>
-                  {'</>'}
-                </button>
-              </div>
-              <Btn icon={Ic.ClearFormat} label="Clear" title="Clear formatting" disabled={!ed} onClick={() => chain().unsetAllMarks().clearNodes().run()} />
-            </Group>
             <Group label="Font">
-              <div className="rb-font">
-                <select
-                  className="rb-select"
-                  aria-label="Font size"
-                  title="Font size"
-                  disabled={!ed}
-                  value={(ed?.getAttributes('textStyle').fontSize as string | undefined) || ''}
-                  onChange={(e) => (e.target.value ? chain().setFontSize(e.target.value).run() : chain().unsetFontSize().run())}
-                >
-                  <option value="">Size: normal</option>
-                  {FONT_SIZES.map((size) => (
-                    <option key={size} value={size}>
-                      {parseInt(size, 10)}
-                    </option>
-                  ))}
-                </select>
-                <div className="rb-font-row">
+              <div className="rb-rows">
+                <div className="rb-row">
+                  <select
+                    className="rb-select family"
+                    aria-label="Font"
+                    title="Font"
+                    disabled={!ed}
+                    value={(ed?.getAttributes('textStyle').fontFamily as string | undefined)?.replace(/["']/g, '') || ''}
+                    onChange={(e) => (e.target.value ? chain().setFontFamily(/[\s]/.test(e.target.value) && !GENERIC_FONTS.includes(e.target.value) ? `'${e.target.value}'` : e.target.value).run() : chain().unsetFontFamily().run())}
+                  >
+                    <option value="">Font: default</option>
+                    <optgroup label="General">
+                      <option value="sans-serif">Sans-serif</option>
+                      <option value="serif">Serif</option>
+                      <option value="monospace">Monospace</option>
+                    </optgroup>
+                    {fonts.length > 0 && (
+                      <optgroup label="Installed fonts">
+                        {fonts.map((f) => (
+                          <option key={f} value={f}>
+                            {f}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                  <select
+                    className="rb-select size"
+                    aria-label="Font size"
+                    title="Font size"
+                    disabled={!ed}
+                    value={(ed?.getAttributes('textStyle').fontSize as string | undefined) || ''}
+                    onChange={(e) => (e.target.value ? chain().setFontSize(e.target.value).run() : chain().unsetFontSize().run())}
+                  >
+                    <option value="">Size</option>
+                    {FONT_SIZES.map((size) => (
+                      <option key={size} value={size}>
+                        {parseInt(size, 10)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rb-row">
+                  <Mini label="B" cls="b" title="Bold (Ctrl+B)" disabled={!ed} active={is('bold')} onClick={() => chain().toggleBold().run()} />
+                  <Mini label="I" cls="i" title="Italic (Ctrl+I)" disabled={!ed} active={is('italic')} onClick={() => chain().toggleItalic().run()} />
+                  <Mini label="U" cls="u" title="Underline (Ctrl+U)" disabled={!ed} active={is('underline')} onClick={() => chain().toggleUnderline().run()} />
+                  <Mini label="S" cls="s" title="Strikethrough (Ctrl+Shift+S)" disabled={!ed} active={is('strike')} onClick={() => chain().toggleStrike().run()} />
+                  <Mini label="</>" cls="code" title="Inline code (Ctrl+E)" disabled={!ed} active={is('code')} onClick={() => chain().toggleCode().run()} />
                   <Swatches
                     label="Font colour"
                     letter="A"
@@ -237,14 +284,50 @@ export function Ribbon(props: Props) {
                     current={is('highlight') ? ((ed?.getAttributes('highlight').color as string | undefined) ?? 'default') : null}
                     colors={HIGHLIGHTS.map(([name, value, swatch]) => ({ name, value: value ?? 'default', swatch }))}
                     defaultLabel="No highlight"
-                    onPick={(c) =>
-                      c === null
-                        ? chain().unsetHighlight().run()
-                        : c === 'default'
-                          ? chain().setHighlight().run()
-                          : chain().setHighlight({ color: c }).run()
-                    }
+                    onPick={(c) => (c === null ? chain().unsetHighlight().run() : c === 'default' ? chain().setHighlight().run() : chain().setHighlight({ color: c }).run())}
                   />
+                  <Mini icon={Ic.ClearFormat} title="Clear formatting" disabled={!ed} onClick={() => chain().unsetAllMarks().clearNodes().run()} />
+                </div>
+              </div>
+            </Group>
+            <Group label="Paragraph">
+              <div className="rb-rows">
+                <div className="rb-row">
+                  <Mini icon={Ic.Bullets} title="Bullets" disabled={!ed} active={is('bulletList')} onClick={() => chain().toggleBulletList().run()} />
+                  <Mini icon={Ic.Numbers} title="Numbering" disabled={!ed} active={is('orderedList')} onClick={() => chain().toggleOrderedList().run()} />
+                  <Mini icon={Ic.Todo} title="To-do list" disabled={!ed} active={is('taskList')} onClick={() => chain().toggleTaskList().run()} />
+                  <Mini
+                    icon={Ic.Outdent}
+                    title="Outdent list item (Shift+Tab)"
+                    disabled={!ed || !(ed.can().liftListItem('listItem') || ed.can().liftListItem('taskItem'))}
+                    onClick={() => (ed!.can().liftListItem('taskItem') ? chain().liftListItem('taskItem').run() : chain().liftListItem('listItem').run())}
+                  />
+                  <Mini
+                    icon={Ic.Indent}
+                    title="Indent list item (Tab)"
+                    disabled={!ed || !(ed.can().sinkListItem('listItem') || ed.can().sinkListItem('taskItem'))}
+                    onClick={() => (ed!.can().sinkListItem('taskItem') ? chain().sinkListItem('taskItem').run() : chain().sinkListItem('listItem').run())}
+                  />
+                </div>
+                <div className="rb-row">
+                  {(
+                    [
+                      ['left', 'Align left (Ctrl+Shift+L)', Ic.AlignLeft],
+                      ['center', 'Center (Ctrl+Shift+E)', Ic.AlignCenter],
+                      ['right', 'Align right (Ctrl+Shift+R)', Ic.AlignRight],
+                      ['justify', 'Justify (Ctrl+Shift+J)', Ic.AlignJustify]
+                    ] as const
+                  ).map(([align, title, icon]) => (
+                    <Mini
+                      key={align}
+                      icon={icon}
+                      title={title}
+                      disabled={!ed}
+                      active={!!ed && (align === 'left' ? !['center', 'right', 'justify'].some((a) => ed.isActive({ textAlign: a })) : ed.isActive({ textAlign: align }))}
+                      onClick={() => (align === 'left' ? chain().unsetTextAlign().run() : chain().setTextAlign(align).run())}
+                    />
+                  ))}
+                  <Mini icon={Ic.Quote} title="Quote" disabled={!ed} active={is('blockquote')} onClick={() => chain().toggleBlockquote().run()} />
                 </div>
               </div>
             </Group>
@@ -270,25 +353,9 @@ export function Ribbon(props: Props) {
                 ))}
               </div>
             </Group>
-            <Group label="Paragraph">
-              <Btn icon={Ic.Bullets} label="Bullets" disabled={!ed} active={is('bulletList')} onClick={() => chain().toggleBulletList().run()} />
-              <Btn icon={Ic.Numbers} label="Numbering" disabled={!ed} active={is('orderedList')} onClick={() => chain().toggleOrderedList().run()} />
-              <Btn icon={Ic.Todo} label="To-do" disabled={!ed} active={is('taskList')} onClick={() => chain().toggleTaskList().run()} />
-              <Btn icon={Ic.Quote} label="Quote" disabled={!ed} active={is('blockquote')} onClick={() => chain().toggleBlockquote().run()} />
-              <Btn
-                icon={Ic.Outdent}
-                label="Outdent"
-                title="Outdent list item (Shift+Tab)"
-                disabled={!ed || !(ed.can().liftListItem('listItem') || ed.can().liftListItem('taskItem'))}
-                onClick={() => (ed!.can().liftListItem('taskItem') ? chain().liftListItem('taskItem').run() : chain().liftListItem('listItem').run())}
-              />
-              <Btn
-                icon={Ic.Indent}
-                label="Indent"
-                title="Indent list item (Tab)"
-                disabled={!ed || !(ed.can().sinkListItem('listItem') || ed.can().sinkListItem('taskItem'))}
-                onClick={() => (ed!.can().sinkListItem('taskItem') ? chain().sinkListItem('taskItem').run() : chain().sinkListItem('listItem').run())}
-              />
+            <Group label="Editing">
+              <Btn icon={Ic.Find} label="Find" title="Find in page (Ctrl+F)" disabled={!openFind} onClick={() => openFind?.(false)} />
+              <Btn icon={Ic.Replace} label="Replace" title="Find and replace (Ctrl+H)" disabled={!openFind || !ed} onClick={() => openFind?.(true)} />
             </Group>
           </>
         )}

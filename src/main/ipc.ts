@@ -5,7 +5,9 @@
 import { BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { execFile } from 'node:child_process'
 import { EngineFailure, FileEngine, IMAGE_EXTS } from './fileEngine'
+import { exportPdf, printPage } from './printing'
 import type { Result } from '../shared/types'
 
 async function wrap<T>(fn: () => Promise<T> | T): Promise<Result<T>> {
@@ -18,7 +20,32 @@ async function wrap<T>(fn: () => Promise<T> | T): Promise<Result<T>> {
   }
 }
 
+let fontCache: Promise<string[]> | null = null
+/** Font families installed on this computer (from fontconfig, so nothing is downloaded). */
+function listFonts(): Promise<string[]> {
+  fontCache ??= new Promise((resolve) =>
+    execFile('fc-list', [':', 'family'], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (err, out) => {
+      if (err) return resolve([])
+      const names = new Set<string>()
+      for (const line of out.split('\n')) {
+        const name = line.split(',')[0].trim()
+        if (name && !name.startsWith('.') && /^[\w\s.()-]+$/.test(name)) names.add(name)
+      }
+      resolve([...names].sort((a, b) => a.localeCompare(b)).slice(0, 400))
+    })
+  )
+  return fontCache
+}
+
 export function registerIpc(engine: FileEngine): void {
+  // Cut / copy / paste for the editor's right-click menu.
+  ipcMain.on('edit:command', (e, cmd: string) => {
+    if (cmd === 'cut') e.sender.cut()
+    else if (cmd === 'copy') e.sender.copy()
+    else if (cmd === 'paste') e.sender.paste()
+    else if (cmd === 'selectAll') e.sender.selectAll()
+  })
+
   const handlers: Record<string, (...args: any[]) => unknown> = {
     getRoot: () => engine.root,
     listTree: () => engine.listTree(),
@@ -57,6 +84,9 @@ export function registerIpc(engine: FileEngine): void {
       return engine.saveAsset(nb, sec, path.basename(file), await fs.readFile(file))
     },
 
+    exportPdf: (html, title) => exportPdf(BrowserWindow.getFocusedWindow(), String(html), String(title)),
+    printPage: (html, title) => printPage(String(html), String(title)),
+    listFonts: () => listFonts(),
     openRootFolder: async () => {
       await engine.ensureRoot()
       const err = await shell.openPath(engine.root)

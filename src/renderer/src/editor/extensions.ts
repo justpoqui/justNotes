@@ -7,7 +7,11 @@ import Highlight from '@tiptap/extension-highlight'
 import Image from '@tiptap/extension-image'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { TableKit } from '@tiptap/extension-table'
-import { Color, FontSize, TextStyle } from '@tiptap/extension-text-style'
+import Heading from '@tiptap/extension-heading'
+import Paragraph from '@tiptap/extension-paragraph'
+import TextAlign from '@tiptap/extension-text-align'
+import { Color, FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style'
+import Underline from '@tiptap/extension-underline'
 import { Placeholder } from '@tiptap/extensions'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
@@ -21,7 +25,7 @@ const lowlight = createLowlight(common)
 // written as small inline HTML tags that most Markdown viewers still display:
 //   <span style="color: #e06c75; font-size: 20px">text</span>
 //   ==plain highlight==   or   <mark style="background-color: #a5d6a7">coloured</mark>
-const SAFE_CSS_VALUE = /^[#\w\s.,()%-]+$/
+const SAFE_CSS_VALUE = /^[#\w\s.,()%'-]+$/
 
 /** Text colour + font size, saved as <span style="..."> */
 const StyledText = TextStyle.extend({
@@ -32,8 +36,11 @@ const StyledText = TextStyle.extend({
     const content = h.renderChildren(node)
     const css: string[] = []
     const { color, fontSize } = node.attrs ?? {}
+    // Font names are written with single quotes so they fit inside style="...".
+    const fontFamily = typeof node.attrs?.fontFamily === 'string' ? node.attrs.fontFamily.replace(/"/g, "'") : ''
     if (color && SAFE_CSS_VALUE.test(color)) css.push(`color: ${color}`)
     if (fontSize && SAFE_CSS_VALUE.test(fontSize)) css.push(`font-size: ${fontSize}`)
+    if (fontFamily && SAFE_CSS_VALUE.test(fontFamily)) css.push(`font-family: ${fontFamily}`)
     return css.length ? `<span style="${css.join('; ')}">${content}</span>` : content
   }
 })
@@ -48,10 +55,59 @@ const ColorHighlight = Highlight.extend({
   }
 }).configure({ multicolor: true })
 
+/** Underline, saved as <u>text</u> (Markdown has no underline). */
+const HtmlUnderline = Underline.extend({
+  priority: 42,
+  renderMarkdown: (node: any, h: any) => `<u>${h.renderChildren(node)}</u>`
+})
+
+// Text alignment (left is the default and isn't written). Markdown has none, so an
+// aligned paragraph or heading is wrapped like this, which GitHub & co. also show:
+//   <div align="center">
+//
+//   The paragraph, with **normal** Markdown inside.
+//
+//   </div>
+const ALIGNED = /^<div align="(left|center|right|justify)">\n\n([\s\S]*?)\n\n<\/div>(?:\n+|$)/
+const wrapAligned = (md: string, node: any, ctx: any) => {
+  const align = node.attrs?.textAlign
+  // Only for top-level blocks: inside lists or tables the wrapper would break the Markdown.
+  return align && align !== 'left' && (!ctx || !ctx.parentType || ctx.parentType === 'doc') ? `<div align="${align}">\n\n${md}\n\n</div>` : md
+}
+const AlignedParagraph = Paragraph.extend({
+  renderMarkdown(node: any, h: any, ctx: any) {
+    return wrapAligned(this.parent!(node, h, ctx), node, ctx)
+  }
+})
+const AlignedHeading = Heading.extend({
+  renderMarkdown(node: any, h: any, ctx: any) {
+    return wrapAligned(this.parent!(node, h, ctx), node, ctx)
+  }
+})
+const AlignedBlocks = Extension.create({
+  name: 'alignedBlocks',
+  markdownTokenName: 'alignedBlock',
+  markdownTokenizer: {
+    name: 'alignedBlock',
+    level: 'block',
+    start: (src: string) => src.indexOf('<div align='),
+    tokenize(src: string, _tokens: any, lexer: any) {
+      const m = ALIGNED.exec(src)
+      if (!m) return undefined
+      return { type: 'alignedBlock', raw: m[0], align: m[1], tokens: lexer.blockTokens(m[2]) }
+    }
+  },
+  parseMarkdown: (token: any, h: any) =>
+    h.parseChildren(token.tokens ?? []).map((n: any) =>
+      n.type === 'paragraph' || n.type === 'heading' ? { ...n, attrs: { ...(n.attrs ?? {}), textAlign: token.align } } : n
+    )
+})
+
 const escapeHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 /** Marks that are saved as HTML tags rather than Markdown syntax. */
 const isHtmlMark = (m: any) =>
-  typeof m === 'object' && ((m.type === 'textStyle' && (m.attrs?.color || m.attrs?.fontSize)) || (m.type === 'highlight' && m.attrs?.color))
+  typeof m === 'object' &&
+  ((m.type === 'textStyle' && (m.attrs?.color || m.attrs?.fontSize || m.attrs?.fontFamily)) || (m.type === 'highlight' && m.attrs?.color) || m.type === 'underline')
 
 /** Swaps TipTap's heavy-handed text escaping for escapeMarkdownText. */
 const ReadableMarkdown = Extension.create({
@@ -89,16 +145,23 @@ export function createExtensions({ resolveImageSrc = (s) => s, placeholder, extr
   return [
     StarterKit.configure({
       codeBlock: false, // replaced by the syntax-highlighted version
-      underline: false, // Markdown has no underline
-      heading: { levels: [1, 2, 3, 4, 5, 6] },
+      underline: false, // replaced by HtmlUnderline (<u>…</u>)
+      paragraph: false, // replaced by the alignment-aware versions below
+      heading: false,
       link: { openOnClick: false, autolink: true, defaultProtocol: 'https' }
     }),
+    AlignedParagraph,
+    AlignedHeading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
+    AlignedBlocks,
+    TextAlign.configure({ types: ['heading', 'paragraph'], alignments: ['left', 'center', 'right', 'justify'] }),
+    HtmlUnderline,
     CodeBlockLowlight.configure({ lowlight, defaultLanguage: null }),
     TaskList,
     TaskItem.configure({ nested: true }),
     StyledText,
     Color,
     FontSize,
+    FontFamily,
     ColorHighlight,
     PageImage.configure({ allowBase64: true }),
     TableKit.configure({ table: { resizable: false } }),

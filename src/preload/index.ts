@@ -49,6 +49,10 @@ const api: WikiApi = {
       ipcRenderer.removeListener('app:flush-before-close', listener)
     }
   },
+  exportPdf: call('exportPdf'),
+  printPage: call('printPage'),
+  listFonts: call('listFonts'),
+  editCommand: (cmd) => ipcRenderer.send('edit:command', cmd),
   windowControls: {
     minimize: () => ipcRenderer.send('win:minimize'),
     toggleMaximize: () => ipcRenderer.send('win:toggle-maximize'),

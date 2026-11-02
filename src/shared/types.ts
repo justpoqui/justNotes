@@ -105,6 +105,15 @@ export interface WikiApi {
    * whether by this app or by another program. Returns an unsubscribe function.
    */
   onChanged(callback: () => void): () => void
+  /** Saves the page (as HTML) to a PDF chosen in a save dialog. Resolves to the path, or null if cancelled. */
+  exportPdf(html: string, title: string): Promise<Result<string | null>>
+  /** Opens the system print dialog for the page. */
+  printPage(html: string, title: string): Promise<Result<void>>
+  /** Font families installed on this computer. */
+  listFonts(): Promise<Result<string[]>>
+  /** Cut / copy / paste / select all in the focused text. */
+  editCommand(cmd: 'cut' | 'copy' | 'paste' | 'selectAll'): void
+
   /** The buttons of the app's own title bar. */
   windowControls: {
     minimize(): void

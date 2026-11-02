@@ -11,6 +11,12 @@ import { isImageFile, resolveImageSrc, storeImage } from '../editor/images'
 import { findUnsupported, splitFrontMatter } from '../editor/preserve'
 import { clearActivePage, setActivePage } from '../editor/activePage'
 import { registerFlusher } from '../editor/saveCoordinator'
+import { Search } from '../editor/Search'
+import { getSettings, updateSettings, useSettings } from '../lib/settings'
+import { ignoredWords, Proofing, refreshSpelling } from '../proofing/Proofing'
+import { getSpellChecker } from '../proofing/spellchecker'
+import { ContextMenu, type MenuItem } from './ContextMenu'
+import { FindBar } from './FindBar'
 import { filterSlashItems, SlashCommand, slashItems, type SlashMenuState } from '../editor/SlashCommand'
 
 const SAVE_DELAY_MS = 600
@@ -54,6 +60,16 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
   const [conflict, setConflict] = useState<string | null>(null)
   const [slash, setSlash] = useState<SlashMenuState | null>(null)
   const [slashIndex, setSlashIndex] = useState(0)
+  const [find, setFind] = useState<{ replace: boolean; token: number } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; items: (MenuItem | 'sep')[] } | null>(null)
+  const findOpen = useRef(false)
+  findOpen.current = find !== null
+  const [stats, setStats] = useState<WordStats>({ words: 0, chars: 0, charsNoSpaces: 0, selWords: 0 })
+  const statsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const scheduleStats = (ed: Editor) => {
+    clearTimeout(statsTimer.current)
+    statsTimer.current = setTimeout(() => !ed.isDestroyed && setStats(computeStats(ed)), 150)
+  }
   const parts = useMemo(() => splitFrontMatter(initial), [initial])
   // Pages with content the editor would simplify open read-only until the user agrees.
   const [unsupported, setUnsupported] = useState(() => findUnsupported(parts.body))
@@ -141,6 +157,8 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
     return createExtensions({
       resolveImageSrc: (src) => resolveImageSrc(notebook, section, src),
       extra: [
+        Proofing,
+        Search,
         SlashCommand.configure({
           items: (q) => filterSlashItems(items, q),
           onChange: (state) => {
@@ -197,12 +215,14 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
           return false
         }
       },
+      onCreate: ({ editor: ed }) => scheduleStats(ed as Editor),
+      onTransaction: ({ editor: ed }) => scheduleStats(ed as Editor),
       onUpdate: ({ transaction }) => {
         if (!transaction.docChanged) return
         dirty.current = true
         setStatus('unsaved')
         clearTimeout(timer.current)
-        timer.current = setTimeout(() => void save(), SAVE_DELAY_MS)
+        timer.current = setTimeout(() => void save(), getSettings().autosaveDelay || SAVE_DELAY_MS)
       }
     },
     [extensions]
@@ -212,16 +232,26 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
   // Make this editor the ribbon's target while it's open.
   useEffect(() => {
     if (!editor) return
+    const html = () => editor.getHTML()
     const owner = {
       editor,
       insertImage: () =>
         void pickImage().then((src) => {
           if (src && !editor.isDestroyed) editor.chain().focus().setImage({ src, alt: '' }).run()
+        }),
+      openFind: (replace: boolean) => setFind((f) => ({ replace: replace || !!f?.replace, token: (f?.token ?? 0) + 1 })),
+      exportPdf: () =>
+        void window.wiki.exportPdf(html(), page).then((r) => {
+          if (!r.ok) onErrorRef.current(r.error.message)
+        }),
+      print: () =>
+        void window.wiki.printPage(html(), page).then((r) => {
+          if (!r.ok) onErrorRef.current(r.error.message)
         })
     }
     setActivePage(owner)
     return () => clearActivePage(owner)
-  }, [editor, pickImage])
+  }, [editor, pickImage, page])
 
   // Save on Ctrl+S, before the page is renamed/deleted (flushAllSaves), when switching pages,
   // and when the window closes (App registers flushAllSaves with onBeforeClose).
@@ -236,9 +266,24 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
   )
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      // Esc closes the find bar, wherever focus is (unless a dialog or menu is open).
+      if (e.key === 'Escape' && findOpen.current && !document.querySelector('.backdrop, .menu')) {
+        e.preventDefault()
+        setFind(null)
+        editorRef.current?.commands.focus()
+        return
+      }
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return
+      const key = e.key.toLowerCase()
+      if (key === 's') {
         e.preventDefault()
         void save()
+      } else if (key === 'f' || key === 'h') {
+        // Find (Ctrl+F) / Replace (Ctrl+H) — not while typing in another box (e.g. a dialog).
+        const t = e.target as HTMLElement | null
+        if (t && t.closest('input, textarea, select, .dialog') && !t.closest('.find-bar')) return
+        e.preventDefault()
+        setFind((f) => ({ replace: key === 'h' || !!f?.replace, token: (f?.token ?? 0) + 1 }))
       }
     }
     window.addEventListener('keydown', onKey)
@@ -257,6 +302,49 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
     [notebook, section, page]
   )
 
+  /** Right-click in the page: spelling suggestions for a misspelled word, then cut/copy/paste. */
+  const onContextMenu = (e: React.MouseEvent) => {
+    if (!editor || !(e.target as HTMLElement).closest('.prose')) return
+    e.preventDefault()
+    const items: (MenuItem | 'sep')[] = []
+    const bad = (e.target as HTMLElement).closest('.spell-error') as HTMLElement | null
+    if (bad && editor.isEditable) {
+      const word = bad.dataset.word ?? bad.textContent ?? ''
+      const from = editor.view.posAtDOM(bad, 0)
+      const to = from + word.length
+      const suggestions = getSpellChecker().suggest(word).slice(0, 6)
+      for (const sug of suggestions) items.push({ label: sug, onClick: () => editor.chain().focus().insertContentAt({ from, to }, sug).run() })
+      if (!suggestions.length) items.push({ label: 'No suggestions', onClick: () => {} })
+      items.push('sep')
+      items.push({
+        label: `Add "${word}" to dictionary`,
+        onClick: () => {
+          const s = getSettings()
+          if (!s.dictionary.includes(word)) updateSettings({ dictionary: [...s.dictionary, word].sort((a, b) => a.localeCompare(b)) })
+          refreshSpelling(editor.view)
+        }
+      })
+      items.push({
+        label: 'Ignore',
+        onClick: () => {
+          ignoredWords.add(word.toLowerCase())
+          refreshSpelling(editor.view)
+        }
+      })
+      items.push('sep')
+    }
+    const hasSelection = !editor.state.selection.empty
+    items.push(
+      ...(editor.isEditable && hasSelection ? [{ label: 'Cut', shortcut: 'Ctrl+X', onClick: () => window.wiki.editCommand('cut') }] : []),
+      ...(hasSelection ? [{ label: 'Copy', shortcut: 'Ctrl+C', onClick: () => window.wiki.editCommand('copy') }] : []),
+      ...(editor.isEditable ? [{ label: 'Paste', shortcut: 'Ctrl+V', onClick: () => window.wiki.editCommand('paste') }] : []),
+      { label: 'Select all', shortcut: 'Ctrl+A', onClick: () => editor.chain().focus().selectAll().run() },
+      'sep',
+      { label: 'Find…', shortcut: 'Ctrl+F', onClick: () => setFind((f) => ({ replace: !!f?.replace, token: (f?.token ?? 0) + 1 })) }
+    )
+    setMenu({ x: e.clientX, y: e.clientY, items })
+  }
+
   const resolveConflict = (useDisk: boolean) => {
     const disk = conflict
     setConflict(null)
@@ -272,8 +360,29 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
   }
 
   return (
-    <div className="editor-wrap">
-      {statusSlot ? createPortal(<SaveIndicator status={status} />, statusSlot) : <SaveIndicator status={status} />}
+    <div className="editor-wrap" onContextMenu={onContextMenu}>
+      {statusSlot
+        ? createPortal(
+            <>
+              <WordCount stats={stats} />
+              <SaveIndicator status={status} />
+            </>,
+            statusSlot
+          )
+        : <SaveIndicator status={status} />}
+      {find && editor && (
+        <FindBar
+          editor={editor}
+          showReplace={find.replace}
+          setShowReplace={(replace) => setFind((f) => (f ? { ...f, replace } : f))}
+          focusToken={find.token}
+          onClose={() => {
+            setFind(null)
+            editor.commands.focus()
+          }}
+        />
+      )}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       {conflict !== null && (
         <div className="conflict" role="alert">
           <span>This page was changed by another program while you were editing it.</span>
@@ -321,6 +430,38 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
   )
 }
 
+export interface WordStats {
+  words: number
+  chars: number
+  charsNoSpaces: number
+  selWords: number
+}
+
+const countWords = (t: string) => t.match(/[\p{L}\p{N}][\p{L}\p{N}'’_-]*/gu)?.length ?? 0
+
+function computeStats(editor: Editor): WordStats {
+  const { doc, selection } = editor.state
+  const text = doc.textBetween(0, doc.content.size, ' ', ' ')
+  return {
+    words: countWords(text),
+    chars: text.length,
+    charsNoSpaces: text.replace(/\s/g, '').length,
+    selWords: selection.empty ? 0 : countWords(doc.textBetween(selection.from, selection.to, ' ', ' '))
+  }
+}
+
+/** "123 words" in the page bar (or "12 of 123 words" for a selection); hover for details. */
+function WordCount({ stats }: { stats: WordStats }) {
+  const { wordCount } = useSettings()
+  if (!wordCount) return null
+  const n = (x: number) => x.toLocaleString()
+  return (
+    <span className="word-count" title={`${n(stats.words)} words\n${n(stats.chars)} characters (with spaces)\n${n(stats.charsNoSpaces)} characters (no spaces)`}>
+      {stats.selWords ? `${n(stats.selWords)} of ${n(stats.words)} words` : `${n(stats.words)} word${stats.words === 1 ? '' : 's'}`}
+    </span>
+  )
+}
+
 function SaveIndicator({ status }: { status: SaveStatus }) {
   const label = { saved: 'Saved', unsaved: 'Editing…', saving: 'Saving…', error: 'Not saved' }[status]
   return (
@@ -365,6 +506,9 @@ function SlashMenu({ state, index, setIndex }: { state: SlashMenuState; index: n
   )
 }
 
+const shouldShowFormatMenu = ({ editor: e, state }: { editor: Editor; state: Editor['state'] }) =>
+  !state.selection.empty && !e.isActive('codeBlock') && !e.isActive('image') && e.isEditable
+
 /** Small toolbar shown above selected text. */
 function FormatMenu({ editor }: { editor: Editor }) {
   const [linking, setLinking] = useState(false)
@@ -382,6 +526,10 @@ function FormatMenu({ editor }: { editor: Editor }) {
     }
   }, [editor])
 
+  // Must be stable: BubbleMenu sends an update to the editor whenever these change,
+  // and this component re-renders on every update (that used to loop endlessly).
+  const menuOptions = useMemo(() => ({ placement: 'top' as const, onHide: () => setLinking(false) }), [])
+
   const btn = (label: string, title: string, active: boolean, run: () => void, cls = '') => (
     <button className={`${cls}${active ? ' active' : ''}`} title={title} aria-pressed={active} onMouseDown={(e) => e.preventDefault()} onClick={run}>
       {label}
@@ -397,12 +545,7 @@ function FormatMenu({ editor }: { editor: Editor }) {
   }
 
   return (
-    <BubbleMenu
-      editor={editor}
-      className="format-menu"
-      shouldShow={({ editor: e, state }) => !state.selection.empty && !e.isActive('codeBlock') && !e.isActive('image') && e.isEditable}
-      options={{ placement: 'top', onHide: () => setLinking(false) }}
-    >
+    <BubbleMenu editor={editor} className="format-menu" shouldShow={shouldShowFormatMenu} options={menuOptions}>
       {linking ? (
         <form
           className="link-form"

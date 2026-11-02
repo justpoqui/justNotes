@@ -11,8 +11,10 @@ import { NotebookDialog, type NotebookDialogMode } from './components/NotebookDi
 import { PageView } from './components/PageView'
 import { Ribbon, type PageMode } from './components/Ribbon'
 import { SectionTabs } from './components/SectionTabs'
+import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar, type Editing, type PageRow, type SidebarActions } from './components/Sidebar'
 import { flushAllSaves } from './editor/saveCoordinator'
+import { useSettings } from './lib/settings'
 import { load, save } from './lib/storage'
 import { existsIn, isWithin, kindOf, nameOf, nearestExisting, parentOf, refOf, remapKey } from './lib/tree'
 
@@ -45,6 +47,8 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null) // non-error notices, e.g. "Moved …"
   const [moving, setMoving] = useState<string | null>(null) // page key being moved
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settings = useSettings()
   const [width, setWidth] = useState(() => load('jn.sidebarWidth', 260))
   const [theme, setTheme] = useState<'dark' | 'light'>(() => load('jn.theme', 'dark'))
   const [sidebarVisible, setSidebarVisible] = useState(() => load('jn.sidebarVisible', true))
@@ -148,6 +152,26 @@ export function App() {
     void refresh()
     return api.onChanged(() => void refresh())
   }, [refresh])
+
+  // Page font and size from Settings.
+  useEffect(() => {
+    const root = document.documentElement.style
+    const f = settings.editorFont
+    root.setProperty('--editor-font', f ? (['serif', 'monospace', 'sans-serif'].includes(f) ? f : `'${f}', system-ui, sans-serif`) : 'inherit')
+    root.setProperty('--editor-size', `${settings.editorFontSize}px`)
+  }, [settings.editorFont, settings.editorFontSize])
+
+  // Ctrl+, opens Settings.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+        e.preventDefault()
+        setSettingsOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Unsaved edits are written before the window closes.
   useEffect(() => api.onBeforeClose(flushAllSaves), [])
@@ -391,6 +415,7 @@ export function App() {
         onRenameNotebook={() => notebook && startRename(notebook.name)}
         onDeleteNotebook={() => notebook && void remove(notebook.name)}
         onRevealNotebook={() => notebook && void showInFolder(notebook.name)}
+        onOpenSettings={() => setSettingsOpen(true)}
         sidebarVisible={sidebarVisible}
         toggleSidebar={() => setSidebarVisible((v) => !v)}
         theme={theme}
@@ -446,6 +471,7 @@ export function App() {
           onClose={() => setNotebookDialog(null)}
         />
       )}
+      {settingsOpen && <SettingsDialog theme={theme} setTheme={setTheme} onClose={() => setSettingsOpen(false)} />}
       {moving && tree && (
         <MoveDialog tree={tree} pageKey={moving} onMove={(nb, sec) => movePage(moving, nb, sec)} onClose={() => setMoving(null)} />
       )}

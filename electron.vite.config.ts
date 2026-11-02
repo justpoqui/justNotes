@@ -26,6 +26,8 @@ export default defineConfig({
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
     build: { rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') } },
-    plugins: [react(), excalidrawOffline()]
+    plugins: [react(), excalidrawOffline()],
+    // The English spell-check dictionary is bundled into the app (no downloads).
+    resolve: { alias: { '@dictionary-en': resolve(__dirname, 'node_modules/dictionary-en') } }
   }
 })

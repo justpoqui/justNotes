@@ -11,6 +11,28 @@ AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network call
 
 ## Status
 
+**Proofing, Find & Replace, PDF, more formatting, Settings:**
+
+- **Spell-check:** a red wavy underline marks misspelled words. Right-click one for suggestions, **Add to dictionary** or **Ignore**. It uses a bundled English (US) Hunspell dictionary, so it works offline.
+- **AutoCorrect** runs when you type a space or punctuation after a word:
+  - your own replacements (Settings → AutoCorrect) are checked first
+  - then a built-in list of ~170 common typos (teh → the, recieve → receive, dont → don't)
+  - then, optionally, a word that is **one letter off from exactly one** real word (definitly → definitely)
+  - anything less certain only gets the underline, with suggestions on right-click
+- **AutoFormat:** (c) → ©, (tm) → ™, ` -- ` → –, `->` → →, `...` → …, `1/2` → ½, `!=` → ≠, and “smart quotes”.
+- **Ctrl+Z straight after any automatic change** puts back exactly what you typed. That word is then left alone for the rest of the session.
+- **Word count** in the page bar. Select text to see "12 of 340 words", and hover for character counts.
+- **Find & Replace:** Ctrl+F / Ctrl+H, or Home → Find / Replace. Includes match case, whole words, and replace one or all.
+- **Export PDF** and **Print** under File.
+- **Formatting** added to the Home tab:
+  - underline, saved as `<u>…</u>`
+  - font family from your installed fonts (no downloads), saved in the same `<span style>` as size and colour
+  - align left / center / right / justify. A centered paragraph is saved as `<div align="center">` around normal Markdown, which GitHub shows too.
+- **Settings** (File → Settings, the ⚙ in the title bar, or Ctrl+,):
+  - theme, page font and size, word count, autosave timing
+  - turning each proofing feature on or off
+  - your AutoCorrect list and personal dictionary
+
 **Moving pages, own title bar, notes folder renamed:**
 
 - **Moving pages.** Use **Move…** in a page's ⋯ menu (or right-click a page) to send it to another section in this notebook or another one.

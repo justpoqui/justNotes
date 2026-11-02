@@ -155,3 +155,27 @@ describe('text colour, size and highlight', () => {
   })
 })
 
+describe('underline, alignment and font family', () => {
+  it('round-trips underline and fonts', () => {
+    const md = "<u>under</u> and <span style=\"font-family: 'DejaVu Serif'\">serif</span> and **<u>bold under</u>**\n"
+    expect(roundTrip(md)).toBe(md)
+    const p = load(md).getJSON().content![0].content!
+    expect(p[0].marks![0].type).toBe('underline')
+    expect(p[2].marks![0]).toMatchObject({ type: 'textStyle', attrs: { fontFamily: expect.stringContaining('DejaVu Serif') } })
+  })
+
+  it('round-trips aligned paragraphs and headings, keeping Markdown inside', () => {
+    const md = '# Title\n\n<div align="center">\n\n## Centered **heading**\n\n</div>\n\n<div align="right">\n\nRight with *italic*\n\n</div>\n\nNormal\n'
+    expect(roundTrip(md)).toBe(md)
+    const doc = load(md).getJSON().content!
+    expect(doc[1]).toMatchObject({ type: 'heading', attrs: { level: 2, textAlign: 'center' } })
+    expect(doc[2]).toMatchObject({ type: 'paragraph', attrs: { textAlign: 'right' } })
+    expect(doc[3].attrs?.textAlign ?? 'left').toBe('left')
+  })
+
+  it('does not treat these tags as unsupported HTML', async () => {
+    const { findUnsupported } = await import('../src/renderer/src/editor/preserve')
+    expect(findUnsupported('<u>x</u> <span style="font-family: \'Ubuntu\'">y</span>\n\n<div align="center">\n\nz\n\n</div>')).toEqual([])
+  })
+})
+

@@ -19,9 +19,14 @@ export interface ActivePage {
   board: BoardControls | null
   /** Opens a file picker and inserts the chosen image into the page. */
   insertImage: (() => void) | null
+  /** Opens the find bar (with the replace row if asked). */
+  openFind: ((replace: boolean) => void) | null
+  /** Export the open page as PDF / print it. */
+  exportPdf: (() => void) | null
+  print: (() => void) | null
 }
 
-let current: ActivePage = { editor: null, board: null, insertImage: null }
+let current: ActivePage = { editor: null, board: null, insertImage: null, openFind: null, exportPdf: null, print: null }
 const listeners = new Set<() => void>()
 
 export function setActivePage(patch: Partial<ActivePage>): void {
