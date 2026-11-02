@@ -7,6 +7,7 @@ import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog'
 import { ContextMenu, type MenuItem } from './components/ContextMenu'
 import { PageView } from './components/PageView'
 import { childKindOf, Sidebar, type Editing, type SidebarActions } from './components/Sidebar'
+import { flushAllSaves } from './editor/saveCoordinator'
 import { load, save } from './lib/storage'
 import { isWithin, kindOf, nameOf, nearestExisting, parentOf, refOf, remapKey, visibleRows } from './lib/tree'
 
@@ -64,6 +65,9 @@ export function App() {
     return api.onChanged(() => void refresh())
   }, [refresh])
 
+  // Unsaved edits are written before the window closes.
+  useEffect(() => api.onBeforeClose(flushAllSaves), [])
+
   const rows = useMemo(() => (tree ? visibleRows(tree, expanded) : []), [tree, expanded])
 
   /** Toast for a failed result; returns true if it succeeded. */
@@ -117,6 +121,7 @@ export function App() {
             : await api.createPage(p!.notebook, p!.section!, value)
       newKey = (name) => (editing.parentKey ? `${editing.parentKey}/${name}` : name)
     } else {
+      await flushAllSaves() // unsaved edits must land in the file before it moves
       const { notebook, section, page } = refOf(editing.key)
       const kind = kindOf(editing.key)
       result =
@@ -152,6 +157,7 @@ export function App() {
   }
 
   const remove = async (key: string) => {
+    await flushAllSaves()
     const { notebook, section, page } = refOf(key)
     const kind = kindOf(key)
     const afterDelete = async () => {
@@ -244,7 +250,7 @@ export function App() {
         onMouseDown={startResize}
         onDoubleClick={() => setWidth(260)}
       />
-      <PageView tree={tree} selectedKey={selectedKey} select={setSelectedKey} startCreate={startCreate} />
+      <PageView tree={tree} selectedKey={selectedKey} select={setSelectedKey} startCreate={startCreate} notify={setToast} />
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.key)} onClose={() => setMenu(null)} />}
       {confirm && <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />}

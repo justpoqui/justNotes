@@ -22,6 +22,10 @@ import type {
 export const PAGE_EXT = '.md'
 export const CANVAS_EXT = '.canvas.json'
 const MAX_NAME_LENGTH = 120
+/** Images pasted or inserted into a page are stored in <Section>/assets/. */
+export const ASSETS_DIR = 'assets'
+export const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif'])
+const MAX_ASSET_BYTES = 25 * 1024 * 1024
 
 /** An error with a code the UI can react to. */
 export class EngineFailure extends Error {
@@ -361,6 +365,80 @@ export class FileEngine {
     } catch (err) {
       wrapIo(err, `Deleting page "${name}"`)
     }
+  }
+
+  /**
+   * Saves a page's Markdown. The page must already exist (so an edit can't
+   * silently re-create a page that was deleted or renamed elsewhere).
+   * Writes to a temp file first and renames it over the page, so a crash or
+   * power cut mid-save can never leave a half-written note.
+   */
+  async writePage(nbRaw: string, secRaw: string, rawName: string, content: string): Promise<void> {
+    if (typeof content !== 'string') throw new EngineFailure('IO_ERROR', 'Page content must be text.')
+    const name = existingName(rawName, 'page')
+    const file = this.pageFile(existingName(nbRaw, 'notebook'), existingName(secRaw, 'section'), name)
+    if (!(await this.isFile(file))) {
+      throw new EngineFailure('NOT_FOUND', `Page "${name}" no longer exists on disk, so your changes could not be saved.`)
+    }
+    const tmp = path.join(path.dirname(file), `.${name}.md.${process.pid}.${Date.now()}.tmp`)
+    try {
+      await fs.writeFile(tmp, content, 'utf8')
+      await fs.rename(tmp, file)
+    } catch (err) {
+      await fs.rm(tmp, { force: true }).catch(() => {})
+      wrapIo(err, `Saving page "${name}"`)
+    }
+  }
+
+  /**
+   * Stores an image in <Notebook>/<Section>/assets/ and returns the path to
+   * use in Markdown, relative to the page (e.g. "assets/photo.png").
+   * Never overwrites: picks "photo-1.png", "photo-2.png"... if needed.
+   */
+  async saveAsset(nbRaw: string, secRaw: string, fileName: string, data: Uint8Array): Promise<string> {
+    const secDir = this.sectionDir(existingName(nbRaw, 'notebook'), existingName(secRaw, 'section'))
+    await this.requireDir(secDir, `Section "${secRaw}"`)
+    if (!(data instanceof Uint8Array)) throw new EngineFailure('IO_ERROR', 'Image data is missing.')
+    if (data.byteLength > MAX_ASSET_BYTES) {
+      throw new EngineFailure('IO_ERROR', `Images can be at most ${MAX_ASSET_BYTES / 1024 / 1024} MB.`)
+    }
+    const ext = path.extname(String(fileName)).toLowerCase()
+    if (!IMAGE_EXTS.has(ext)) throw new EngineFailure('INVALID_NAME', `"${ext || fileName}" is not a supported image type.`)
+
+    // Keep a readable, safe version of the original name.
+    const base =
+      path
+        .basename(String(fileName), path.extname(String(fileName)))
+        .replace(/[^\p{L}\p{N}._ -]+/gu, '-')
+        .replace(/^[.\s-]+|[.\s-]+$/g, '')
+        .slice(0, 80) || 'image'
+    const dir = path.join(secDir, ASSETS_DIR)
+    try {
+      await fs.mkdir(dir, { recursive: true })
+      for (let i = 0; i < 10000; i++) {
+        const name = i === 0 ? `${base}${ext}` : `${base}-${i}${ext}`
+        try {
+          await fs.writeFile(path.join(dir, name), data, { flag: 'wx' })
+          return `${ASSETS_DIR}/${name}`
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+        }
+      }
+      throw new EngineFailure('IO_ERROR', 'Could not find a free file name for the image.')
+    } catch (err) {
+      wrapIo(err, 'Saving image')
+    }
+  }
+
+  /**
+   * Maps a path relative to the WikiBook root (as used by the wiki-file://
+   * protocol) to an absolute image path, refusing anything outside the root
+   * or anything that isn't an image.
+   */
+  resolveAsset(relPath: string): string {
+    const abs = this.inside(...relPath.split('/').filter(Boolean))
+    if (!IMAGE_EXTS.has(path.extname(abs).toLowerCase())) throw new EngineFailure('INVALID_NAME', 'Not an image.')
+    return abs
   }
 
   async readPage(nbRaw: string, secRaw: string, rawName: string): Promise<string> {

@@ -1,19 +1,21 @@
-// The right-hand pane. Shows the selected page (read-only until the Phase 3
-// editor), or an overview of the selected notebook/section.
+// The right-hand pane: the selected page in the block editor, or an
+// overview of the selected notebook/section.
 
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import type { Tree } from '../../../shared/types'
 import { kindOf, refOf } from '../lib/tree'
 import { NotebookIcon, PageIcon, SectionIcon } from './Icons'
+import { PageEditor } from './PageEditor'
 
 interface Props {
   tree: Tree | null
   selectedKey: string | null
   select(key: string): void
   startCreate(parentKey: string | null): void
+  notify(message: string): void
 }
 
-export function PageView({ tree, selectedKey, select, startCreate }: Props) {
+export function PageView({ tree, selectedKey, select, startCreate, notify }: Props) {
   if (!tree) return <main className="content" />
 
   if (!selectedKey) {
@@ -62,7 +64,9 @@ export function PageView({ tree, selectedKey, select, startCreate }: Props) {
       </nav>
 
       {kind === 'page' ? (
-        <PageContent notebook={ref.notebook} section={ref.section!} page={ref.page!} />
+        <article className="page">
+          <PageEditor key={selectedKey} notebook={ref.notebook} section={ref.section!} page={ref.page!} onError={notify} />
+        </article>
       ) : (
         <FolderOverview tree={tree} selectedKey={selectedKey} select={select} startCreate={startCreate} />
       )}
@@ -70,45 +74,7 @@ export function PageView({ tree, selectedKey, select, startCreate }: Props) {
   )
 }
 
-function PageContent({ notebook, section, page }: { notebook: string; section: string; page: string }) {
-  const [text, setText] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    const load = async () => {
-      const r = await window.wiki.readPage(notebook, section, page)
-      if (!alive) return
-      if (r.ok) {
-        setText(r.data)
-        setError(null)
-      } else setError(r.error.message)
-    }
-    setText(null)
-    void load()
-    // Reload if the file is edited by another program.
-    const off = window.wiki.onChanged(() => void load())
-    return () => {
-      alive = false
-      off()
-    }
-  }, [notebook, section, page])
-
-  return (
-    <article className="page">
-      {error ? (
-        <p className="error-text">{error}</p>
-      ) : text === null ? null : (
-        <>
-          <pre className="markdown-raw">{text}</pre>
-          <p className="phase-note">Read-only preview. The editor arrives in Phase 3.</p>
-        </>
-      )}
-    </article>
-  )
-}
-
-function FolderOverview({ tree, selectedKey, select, startCreate }: Props & { selectedKey: string }) {
+function FolderOverview({ tree, selectedKey, select, startCreate }: Omit<Props, 'notify'> & { selectedKey: string }) {
   const ref = refOf(selectedKey)
   const nb = tree!.notebooks.find((n) => n.name === ref.notebook)
   if (!nb) return null

@@ -75,6 +75,13 @@ export interface WikiApi {
 
   /** Raw Markdown of a page. */
   readPage(notebook: string, section: string, name: string): Promise<Result<string>>
+  /** Saves a page's Markdown (atomically). Fails with NOT_FOUND if the page is gone. */
+  writePage(notebook: string, section: string, name: string, content: string): Promise<Result<void>>
+
+  /** Stores image bytes in the section's assets/ folder; resolves to the relative path for Markdown. */
+  saveAsset(notebook: string, section: string, fileName: string, data: Uint8Array): Promise<Result<string>>
+  /** Shows a file picker and copies the chosen image into assets/. Resolves to null if cancelled. */
+  pickImage(notebook: string, section: string): Promise<Result<string | null>>
 
   /** Opens the WikiBook folder in the system file manager. */
   openRootFolder(): Promise<Result<void>>
@@ -86,4 +93,6 @@ export interface WikiApi {
    * whether by this app or by another program. Returns an unsubscribe function.
    */
   onChanged(callback: () => void): () => void
+  /** `flush` runs (and is awaited) before the window closes. Returns an unsubscribe function. */
+  onBeforeClose(flush: () => Promise<void>): () => void
 }

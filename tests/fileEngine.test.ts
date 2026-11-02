@@ -228,6 +228,48 @@ describe('FileEngine', () => {
   })
 })
 
+describe('FileEngine — editing (Phase 3)', () => {
+  beforeEach(async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await engine.createPage('N', 'S', 'P')
+  })
+
+  it('writes page content and leaves no temp files behind', async () => {
+    await engine.writePage('N', 'S', 'P', '# P\n\nHello\n')
+    expect(await engine.readPage('N', 'S', 'P')).toBe('# P\n\nHello\n')
+    expect(await fs.readdir(path.join(engine.root, 'N', 'S'))).toEqual(['P.md'])
+  })
+
+  it('refuses to re-create a page that was deleted', async () => {
+    await engine.deletePage('N', 'S', 'P')
+    expect(await code(engine.writePage('N', 'S', 'P', 'x'))).toBe('NOT_FOUND')
+    expect(await exists('N', 'S', 'P.md')).toBe(false)
+  })
+
+  it('saves images into assets/ without overwriting', async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71])
+    expect(await engine.saveAsset('N', 'S', 'photo.png', bytes)).toBe('assets/photo.png')
+    expect(await engine.saveAsset('N', 'S', 'photo.png', bytes)).toBe('assets/photo-1.png')
+    expect(await engine.saveAsset('N', 'S', '../../evil name?.PNG', bytes)).toBe('assets/evil name.png')
+    expect([...(await fs.readFile(path.join(engine.root, 'N', 'S', 'assets', 'photo.png')))]).toEqual([...bytes])
+    // the assets folder is not shown as a page or section
+    const tree = await engine.listTree()
+    expect(tree.notebooks[0].sections.map((s) => s.name)).toEqual(['S'])
+    expect(tree.notebooks[0].sections[0].pages.map((p) => p.name)).toEqual(['P'])
+  })
+
+  it('rejects non-image assets', async () => {
+    expect(await code(engine.saveAsset('N', 'S', 'script.sh', new Uint8Array([1])))).toBe('INVALID_NAME')
+  })
+
+  it('only resolves image paths inside the root', () => {
+    expect(engine.resolveAsset('N/S/assets/a.png')).toBe(path.join(engine.root, 'N', 'S', 'assets', 'a.png'))
+    expect(() => engine.resolveAsset('../../etc/passwd.png')).toThrow(EngineFailure)
+    expect(() => engine.resolveAsset('N/S/P.md')).toThrow(EngineFailure)
+  })
+})
+
 describe('watchFolder', () => {
   it('reports changes anywhere under the root, debounced', async () => {
     await engine.ensureRoot()

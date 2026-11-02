@@ -22,8 +22,24 @@ const api: WikiApi = {
   renamePage: call('renamePage'),
   deletePage: call('deletePage'),
   readPage: call('readPage'),
+  writePage: call('writePage'),
+  saveAsset: call('saveAsset'),
+  pickImage: call('pickImage'),
   openRootFolder: call('openRootFolder'),
   showInFolder: call('showInFolder'),
+  onBeforeClose: (flush) => {
+    const listener = async () => {
+      try {
+        await flush()
+      } finally {
+        ipcRenderer.send('app:ready-to-close')
+      }
+    }
+    ipcRenderer.on('app:flush-before-close', listener)
+    return () => {
+      ipcRenderer.removeListener('app:flush-before-close', listener)
+    }
+  },
   onChanged: (callback) => {
     const listener = () => callback()
     ipcRenderer.on('wiki:changed', listener)

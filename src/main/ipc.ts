@@ -2,8 +2,10 @@
 // throwing, because Electron strips custom properties (like `code`) from errors
 // that cross the IPC boundary.
 
-import { ipcMain, shell } from 'electron'
-import { EngineFailure, FileEngine } from './fileEngine'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
+import { EngineFailure, FileEngine, IMAGE_EXTS } from './fileEngine'
 import type { Result } from '../shared/types'
 
 async function wrap<T>(fn: () => Promise<T> | T): Promise<Result<T>> {
@@ -33,6 +35,20 @@ export function registerIpc(engine: FileEngine): void {
     renamePage: (nb, sec, oldName, newName) => engine.renamePage(nb, sec, oldName, newName),
     deletePage: (nb, sec, name) => engine.deletePage(nb, sec, name),
     readPage: (nb, sec, name) => engine.readPage(nb, sec, name),
+    writePage: (nb, sec, name, content) => engine.writePage(nb, sec, name, content),
+    saveAsset: (nb, sec, fileName, data) => engine.saveAsset(nb, sec, fileName, data),
+    pickImage: async (nb, sec) => {
+      const win = BrowserWindow.getFocusedWindow()
+      const opts = {
+        title: 'Insert image',
+        properties: ['openFile' as const],
+        filters: [{ name: 'Images', extensions: [...IMAGE_EXTS].map((e) => e.slice(1)) }]
+      }
+      const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      if (r.canceled || r.filePaths.length === 0) return null
+      const file = r.filePaths[0]
+      return engine.saveAsset(nb, sec, path.basename(file), await fs.readFile(file))
+    },
 
     openRootFolder: async () => {
       await engine.ensureRoot()
