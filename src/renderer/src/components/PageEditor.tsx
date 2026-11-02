@@ -4,10 +4,12 @@
 import { DragHandle } from '@tiptap/extension-drag-handle-react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
+import { createPortal } from 'react-dom'
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createExtensions, finishMarkdown } from '../editor/extensions'
 import { isImageFile, resolveImageSrc, storeImage } from '../editor/images'
 import { findUnsupported, splitFrontMatter } from '../editor/preserve'
+import { clearActivePage, setActivePage } from '../editor/activePage'
 import { registerFlusher } from '../editor/saveCoordinator'
 import { filterSlashItems, SlashCommand, slashItems, type SlashMenuState } from '../editor/SlashCommand'
 
@@ -20,6 +22,8 @@ interface Props {
   section: string
   page: string
   onError(message: string): void
+  /** Element in the page bar where the save status is shown. */
+  statusSlot?: HTMLElement | null
 }
 
 /** Loads the file, then mounts the editor with its contents. */
@@ -45,7 +49,7 @@ export function PageEditor(props: Props) {
   return <EditorView {...props} initial={initial} />
 }
 
-function EditorView({ notebook, section, page, initial, onError }: Props & { initial: string }) {
+function EditorView({ notebook, section, page, initial, onError, statusSlot }: Props & { initial: string }) {
   const [status, setStatus] = useState<SaveStatus>('saved')
   const [conflict, setConflict] = useState<string | null>(null)
   const [slash, setSlash] = useState<SlashMenuState | null>(null)
@@ -205,6 +209,20 @@ function EditorView({ notebook, section, page, initial, onError }: Props & { ini
   )
   editorRef.current = editor
 
+  // Make this editor the ribbon's target while it's open.
+  useEffect(() => {
+    if (!editor) return
+    const owner = {
+      editor,
+      insertImage: () =>
+        void pickImage().then((src) => {
+          if (src && !editor.isDestroyed) editor.chain().focus().setImage({ src, alt: '' }).run()
+        })
+    }
+    setActivePage(owner)
+    return () => clearActivePage(owner)
+  }, [editor, pickImage])
+
   // Save on Ctrl+S, before the page is renamed/deleted (flushAllSaves), when switching pages,
   // and when the window closes (App registers flushAllSaves with onBeforeClose).
   useEffect(() => registerFlusher(() => save()), [save])
@@ -255,7 +273,7 @@ function EditorView({ notebook, section, page, initial, onError }: Props & { ini
 
   return (
     <div className="editor-wrap">
-      <SaveIndicator status={status} />
+      {statusSlot ? createPortal(<SaveIndicator status={status} />, statusSlot) : <SaveIndicator status={status} />}
       {conflict !== null && (
         <div className="conflict" role="alert">
           <span>This page was changed by another program while you were editing it.</span>

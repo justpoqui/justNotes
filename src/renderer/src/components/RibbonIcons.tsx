@@ -1,0 +1,45 @@
+// Line icons for the ribbon (20×20, drawn with currentColor).
+
+import React from 'react'
+
+const I = (children: React.ReactNode) => () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {children}
+  </svg>
+)
+
+export const Undo = I(<><path d="M7 5 3.5 8.5 7 12" /><path d="M4 8.5h8a4.5 4.5 0 0 1 0 9H9" /></>)
+export const Redo = I(<><path d="m13 5 3.5 3.5L13 12" /><path d="M16 8.5H8a4.5 4.5 0 0 0 0 9h3" /></>)
+export const ClearFormat = I(<><path d="M5 4h10M10 4l-3 12" /><path d="m12.5 12.5 4 4m0-4-4 4" /></>)
+export const Bullets = I(<><circle cx="4.5" cy="5.5" r=".9" fill="currentColor" /><circle cx="4.5" cy="10" r=".9" fill="currentColor" /><circle cx="4.5" cy="14.5" r=".9" fill="currentColor" /><path d="M8 5.5h9M8 10h9M8 14.5h9" /></>)
+export const Numbers = I(<><path d="M3.5 4.5h1.5v3M3.5 7.5h3M3.5 12.2a1.2 1.2 0 1 1 2 .9l-2 1.9h2.5" /><path d="M9 5.5h8M9 10h8M9 14.5h8" /></>)
+export const Todo = I(<><rect x="3" y="3.5" width="5" height="5" rx="1" /><path d="m4.2 6 1 1 1.7-1.8" /><rect x="3" y="11.5" width="5" height="5" rx="1" /><path d="M11 6h6M11 14h6" /></>)
+export const Quote = I(<><path d="M4 5v10" /><path d="M8 7h9M8 10h9M8 13h6" /></>)
+export const Indent = I(<><path d="M9 5h8M9 10h8M9 15h8" /><path d="m3 7.5 3 2.5-3 2.5" /></>)
+export const Outdent = I(<><path d="M9 5h8M9 10h8M9 15h8" /><path d="M6 7.5 3 10l3 2.5" /></>)
+export const Table = I(<><rect x="3" y="4" width="14" height="12" rx="1.5" /><path d="M3 8h14M3 12h14M8 4v12M12.5 4v12" /></>)
+export const ImageIcon = I(<><rect x="3" y="4" width="14" height="12" rx="1.5" /><circle cx="7.5" cy="8" r="1.3" /><path d="m3.5 14.5 4-4 3 3 2-2 4 3.5" /></>)
+export const Code = I(<path d="m7 6-4 4 4 4M13 6l4 4-4 4" />)
+export const Divider = I(<><path d="M3 10h14" /><path d="M6 5.5h8M6 14.5h8" opacity=".45" /></>)
+export const LinkIcon = I(<><path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-.9.9" /><path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l.9-.9" /></>)
+export const NewPage = I(<><path d="M5 2.5h6l4 4v11H5z" /><path d="M11 2.5v4h4M10 10v5M7.5 12.5h5" /></>)
+export const NewSection = I(<><path d="M2.5 5.5A1.5 1.5 0 0 1 4 4h3.5l1.5 1.5h7A1.5 1.5 0 0 1 17.5 7v7.5A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5z" /><path d="M10 8.5v5M7.5 11h5" /></>)
+export const NewNotebook = I(<><rect x="4" y="2.5" width="12" height="15" rx="1.5" /><path d="M7 2.5v15M11.5 7.5v5M9 10h5" /></>)
+export const PageMode = I(<><path d="M5 2.5h6l4 4v11H5z" /><path d="M11 2.5v4h4M7.5 10h5M7.5 13h5" /></>)
+export const BoardMode = I(<><rect x="2.5" y="3.5" width="15" height="11" rx="1.5" /><path d="M7 17.5 10 14.5l3 3" /><path d="M5.5 11 8 8l2 2 3.5-3.5" /></>)
+export const Select = I(<path d="M5 3l10 6.5-4.5 1.2L8.5 15z" />)
+export const Hand = I(<path d="M7 10V5a1.2 1.2 0 0 1 2.4 0v4M9.4 9V4a1.2 1.2 0 0 1 2.4 0v5M11.8 9V5.5a1.2 1.2 0 0 1 2.4 0V12a5 5 0 0 1-5 5h-.6a4.5 4.5 0 0 1-3.5-1.7L3.6 13a1.2 1.2 0 0 1 1.8-1.6L7 13" />)
+export const Pen = I(<><path d="M13.5 3.5 16.5 6.5 7 16H4v-3z" /><path d="m11.5 5.5 3 3" /></>)
+export const Rect = I(<rect x="3.5" y="5" width="13" height="10" rx="1.5" />)
+export const Ellipse = I(<ellipse cx="10" cy="10" rx="7" ry="5.2" />)
+export const Arrow = I(<><path d="M4 16 16 4" /><path d="M9 4h7v7" /></>)
+export const TextTool = I(<><path d="M4 5V4h12v1M10 4v12M7.5 16h5" /></>)
+export const Eraser = I(<><path d="m8 16-4-4 7.5-7.5a1.5 1.5 0 0 1 2.1 0L16.5 7.4a1.5 1.5 0 0 1 0 2.1L10 16z" /><path d="M8 16h9M7 9l4 4" /></>)
+export const Sidebar = I(<><rect x="2.5" y="3.5" width="15" height="13" rx="1.5" /><path d="M7.5 3.5v13" /></>)
+export const Moon = I(<path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z" />)
+export const Sun = I(<><circle cx="10" cy="10" r="3.3" /><path d="M10 2v1.8M10 16.2V18M2 10h1.8M16.2 10H18M4.3 4.3l1.3 1.3M14.4 14.4l1.3 1.3M4.3 15.7l1.3-1.3M14.4 5.6l1.3-1.3" /></>)
+export const ZoomIn = I(<><circle cx="9" cy="9" r="5.5" /><path d="m13 13 4 4M9 6.5v5M6.5 9h5" /></>)
+export const ZoomOut = I(<><circle cx="9" cy="9" r="5.5" /><path d="m13 13 4 4M6.5 9h5" /></>)
+export const ZoomReset = I(<><circle cx="9" cy="9" r="5.5" /><path d="m13 13 4 4" /><text x="9" y="11.3" fontSize="6.5" textAnchor="middle" fill="currentColor" stroke="none" fontFamily="system-ui">1:1</text></>)
+export const Folder = I(<path d="M2.5 5.5A1.5 1.5 0 0 1 4 4h3.5l1.5 1.5h7A1.5 1.5 0 0 1 17.5 7v7.5A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5z" />)
+export const Reveal = I(<><path d="M2.5 5.5A1.5 1.5 0 0 1 4 4h3.5l1.5 1.5h7A1.5 1.5 0 0 1 17.5 7v7.5A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5z" /><path d="M8 11h5M11 9l2 2-2 2" /></>)

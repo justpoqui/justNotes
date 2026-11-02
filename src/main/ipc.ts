@@ -2,7 +2,7 @@
 // throwing, because Electron strips custom properties (like `code`) from errors
 // that cross the IPC boundary.
 
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { EngineFailure, FileEngine, IMAGE_EXTS } from './fileEngine'
@@ -36,6 +36,12 @@ export function registerIpc(engine: FileEngine): void {
     deletePage: (nb, sec, name) => engine.deletePage(nb, sec, name),
     readPage: (nb, sec, name) => engine.readPage(nb, sec, name),
     writePage: (nb, sec, name, content) => engine.writePage(nb, sec, name, content),
+    readCanvas: (nb, sec, name) => engine.readCanvas(nb, sec, name),
+    writeCanvas: (nb, sec, name, content) => engine.writeCanvas(nb, sec, name, content),
+    setTheme: (theme) => {
+      nativeTheme.themeSource = theme === 'light' ? 'light' : 'dark'
+      for (const w of BrowserWindow.getAllWindows()) w.setBackgroundColor(theme === 'light' ? '#ffffff' : '#1e1f22')
+    },
     saveAsset: (nb, sec, fileName, data) => engine.saveAsset(nb, sec, fileName, data),
     pickImage: async (nb, sec) => {
       const win = BrowserWindow.getFocusedWindow()

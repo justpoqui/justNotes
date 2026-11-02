@@ -1,11 +1,14 @@
 // The right-hand pane: the selected page in the block editor, or an
 // overview of the selected notebook/section.
 
-import React from 'react'
+import React, { useState } from 'react'
 import type { Tree } from '../../../shared/types'
 import { kindOf, refOf } from '../lib/tree'
 import { NotebookIcon, PageIcon, SectionIcon } from './Icons'
 import { PageEditor } from './PageEditor'
+import type { PageMode } from './Ribbon'
+import { BoardMode, PageMode as PageModeIcon } from './RibbonIcons'
+import { Whiteboard } from './Whiteboard'
 
 interface Props {
   tree: Tree | null
@@ -13,9 +16,15 @@ interface Props {
   select(key: string): void
   startCreate(parentKey: string | null): void
   notify(message: string): void
+  mode: PageMode
+  setMode(mode: PageMode): void
+  theme: 'dark' | 'light'
 }
 
-export function PageView({ tree, selectedKey, select, startCreate, notify }: Props) {
+export function PageView({ tree, selectedKey, select, startCreate, notify, mode, setMode, theme }: Props) {
+  // Where the editor / whiteboard show their "Saved" indicator.
+  const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null)
+
   if (!tree) return <main className="content" />
 
   if (!selectedKey) {
@@ -46,27 +55,49 @@ export function PageView({ tree, selectedKey, select, startCreate, notify }: Pro
     ...(ref.page ? [{ key: selectedKey, label: ref.page }] : [])
   ]
 
-  return (
-    <main className="content">
-      <nav className="breadcrumb" aria-label="Location">
-        {crumbs.map((c, i) => (
-          <React.Fragment key={c.key}>
-            {i > 0 && <span className="crumb-sep">›</span>}
-            {i < crumbs.length - 1 ? (
-              <button className="crumb" onClick={() => select(c.key)}>
-                {c.label}
-              </button>
-            ) : (
-              <span className="crumb current">{c.label}</span>
-            )}
-          </React.Fragment>
-        ))}
-      </nav>
+  const isPage = kind === 'page'
+  const boardMode = isPage && mode === 'board'
 
-      {kind === 'page' ? (
-        <article className="page">
-          <PageEditor key={selectedKey} notebook={ref.notebook} section={ref.section!} page={ref.page!} onError={notify} />
-        </article>
+  return (
+    <main className={`content${boardMode ? ' board-mode' : ''}`}>
+      <div className="page-bar">
+        <nav className="breadcrumb" aria-label="Location">
+          {crumbs.map((c, i) => (
+            <React.Fragment key={c.key}>
+              {i > 0 && <span className="crumb-sep">›</span>}
+              {i < crumbs.length - 1 ? (
+                <button className="crumb" onClick={() => select(c.key)}>
+                  {c.label}
+                </button>
+              ) : (
+                <span className="crumb current">{c.label}</span>
+              )}
+            </React.Fragment>
+          ))}
+        </nav>
+        {isPage && (
+          <>
+            <div className="status-slot" ref={setStatusSlot} />
+            <div className="mode-switch" role="tablist" aria-label="Page view">
+              <button role="tab" aria-selected={!boardMode} className={!boardMode ? 'selected' : ''} onClick={() => setMode('page')} title="Write on the page">
+                <PageModeIcon /> Page
+              </button>
+              <button role="tab" aria-selected={boardMode} className={boardMode ? 'selected' : ''} onClick={() => setMode('board')} title="Draw on this page's whiteboard">
+                <BoardMode /> Whiteboard
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {isPage ? (
+        boardMode ? (
+          <Whiteboard key={selectedKey} notebook={ref.notebook} section={ref.section!} page={ref.page!} theme={theme} onError={notify} statusSlot={statusSlot} />
+        ) : (
+          <article className="page">
+            <PageEditor key={selectedKey} notebook={ref.notebook} section={ref.section!} page={ref.page!} onError={notify} statusSlot={statusSlot} />
+          </article>
+        )
       ) : (
         <FolderOverview tree={tree} selectedKey={selectedKey} select={select} startCreate={startCreate} />
       )}
@@ -74,7 +105,7 @@ export function PageView({ tree, selectedKey, select, startCreate, notify }: Pro
   )
 }
 
-function FolderOverview({ tree, selectedKey, select, startCreate }: Omit<Props, 'notify'> & { selectedKey: string }) {
+function FolderOverview({ tree, selectedKey, select, startCreate }: Pick<Props, 'tree' | 'select' | 'startCreate'> & { selectedKey: string }) {
   const ref = refOf(selectedKey)
   const nb = tree!.notebooks.find((n) => n.name === ref.notebook)
   if (!nb) return null

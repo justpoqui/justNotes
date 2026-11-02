@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# One-step launcher: installs Node.js if needed, installs dependencies, starts the app.
+# One-step launcher: installs Node.js and packages if needed, builds if the code changed, starts the app.
+# (For development with hot reload use `npm run dev` instead.)
 set -e
 cd "$(dirname "$0")"
 if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
@@ -13,4 +14,10 @@ if [ ! -f node_modules/electron/path.txt ]; then
   echo "Downloading Electron..."
   node node_modules/electron/install.js
 fi
-npm run dev -- "$@" || { echo; echo "If it failed with a sandbox error, run: ./run.sh --noSandbox"; exit 1; }
+# Build the app if it has never been built or the code changed since the last build.
+if [ ! -f out/.built ] || [ -n "$(find src scripts package.json electron.vite.config.ts -newer out/.built -print -quit)" ]; then
+  echo "Building justNotes..."
+  npm run build
+  touch out/.built
+fi
+npx electron-vite preview --skipBuild "$@" || { echo; echo "If it failed with a sandbox error, run: ./run.sh --noSandbox"; exit 1; }

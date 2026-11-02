@@ -441,6 +441,42 @@ export class FileEngine {
     return abs
   }
 
+  /** The page's whiteboard (<Page>.canvas.json) as text, or null if it has none yet. */
+  async readCanvas(nbRaw: string, secRaw: string, rawName: string): Promise<string | null> {
+    const nb = existingName(nbRaw, 'notebook')
+    const sec = existingName(secRaw, 'section')
+    const name = existingName(rawName, 'page')
+    try {
+      return await fs.readFile(this.canvasFile(nb, sec, name), 'utf8')
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+      wrapIo(err, `Reading the whiteboard of "${name}"`)
+    }
+  }
+
+  /**
+   * Saves the page's whiteboard next to it as <Page>.canvas.json (atomically).
+   * The page itself must exist, so a whiteboard never ends up orphaned.
+   */
+  async writeCanvas(nbRaw: string, secRaw: string, rawName: string, content: string): Promise<void> {
+    if (typeof content !== 'string') throw new EngineFailure('IO_ERROR', 'Whiteboard content must be text.')
+    const nb = existingName(nbRaw, 'notebook')
+    const sec = existingName(secRaw, 'section')
+    const name = existingName(rawName, 'page')
+    if (!(await this.isFile(this.pageFile(nb, sec, name)))) {
+      throw new EngineFailure('NOT_FOUND', `Page "${name}" no longer exists on disk, so the whiteboard could not be saved.`)
+    }
+    const file = this.canvasFile(nb, sec, name)
+    const tmp = path.join(path.dirname(file), `.${name}.canvas.${process.pid}.${Date.now()}.tmp`)
+    try {
+      await fs.writeFile(tmp, content, 'utf8')
+      await fs.rename(tmp, file)
+    } catch (err) {
+      await fs.rm(tmp, { force: true }).catch(() => {})
+      wrapIo(err, `Saving the whiteboard of "${name}"`)
+    }
+  }
+
   async readPage(nbRaw: string, secRaw: string, rawName: string): Promise<string> {
     const file = this.pageFile(existingName(nbRaw, 'notebook'), existingName(secRaw, 'section'), existingName(rawName, 'page'))
     try {

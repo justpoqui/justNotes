@@ -1,10 +1,10 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
 import os from 'node:os'
 import path from 'node:path'
 import { FileEngine } from './fileEngine'
 import { registerIpc } from './ipc'
 import { watchFolder } from './watcher'
-import { handleAssetProtocol, registerAssetScheme } from './assetProtocol'
+import { handleAppAssetProtocol, handleAssetProtocol, registerAssetScheme } from './assetProtocol'
 
 // Notes live in ~/WikiBook/Notebooks. WIKIBOOK_ROOT overrides it (handy for testing).
 const root = process.env.WIKIBOOK_ROOT || path.join(os.homedir(), 'WikiBook', 'Notebooks')
@@ -13,10 +13,14 @@ registerAssetScheme()
 
 function createWindow(): void {
   const win = new BrowserWindow({
-    width: 1000,
-    height: 720,
+    width: 1200,
+    height: 800,
+    minWidth: 720,
+    minHeight: 480,
     title: 'justNotes',
     show: false,
+    backgroundColor: '#1e1f22', // dark from the first frame, no white flash
+    autoHideMenuBar: true, // the ribbon replaces it; press Alt to show the menu
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -61,10 +65,12 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  nativeTheme.themeSource = 'dark'
   const engine = new FileEngine(root)
   await engine.ensureRoot().catch((err) => console.error(err))
   registerIpc(engine)
   handleAssetProtocol(engine)
+  handleAppAssetProtocol(path.join(__dirname, '../renderer'))
   // Tell every window when something in the WikiBook folder changes.
   const stopWatching = watchFolder(engine.root, () => {
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send('wiki:changed')

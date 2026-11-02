@@ -11,6 +11,20 @@ AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network call
 
 ## Status
 
+**Whiteboard, ribbon and dark theme** are done:
+
+- **Whiteboard per page:** switch with the **Page / Whiteboard** toggle at the top right of a page, or the **Draw** tab.
+  - Drawings are saved as `<Page>.canvas.json` next to the page's `.md`. That's standard Excalidraw JSON, so excalidraw.com can open it too.
+  - The file is only created once you draw something. Renaming or deleting the page renames or deletes its whiteboard too.
+  - The app remembers which pages you last viewed as a whiteboard.
+- **Ribbon (top bar) tabs:**
+  - **Home:** undo/redo, bold, italic, strike, code, clear formatting, style gallery (Normal, Heading 1–3), bullets, numbering, to-do, quote, indent/outdent.
+  - **Insert:** new page, section or notebook; table, picture, code block, divider, link.
+  - **Draw:** page/whiteboard switch and whiteboard tools (select, pan, pen, box, circle, arrow, text, picture, eraser).
+  - **View:** show/hide the sidebar, dark/light theme, zoom, open the WikiBook folder, show the page file.
+- **Dark theme** is the default: soft greys, off-white text and a gentle blue accent. Light is available under View.
+- **Still fully offline:** the whiteboard's fonts are bundled with the app. Excalidraw's built-in download from the internet is removed at build time (`electron.vite.config.ts`). The automated test checks that no network requests are made.
+
 **Phase 3 (block editor)** is done. Pages open in a TipTap block editor and save back to the same `.md` file.
 
 - **Autosave** happens 0.6 s after you stop typing. It also saves immediately on Ctrl+S, when you switch pages, before a page is renamed or deleted, and when the window closes. A crash mid-save can't corrupt a note, because the app writes a temp file and swaps it in.
@@ -18,7 +32,7 @@ AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network call
 - **Formatting toolbar:** appears when you select text (bold, italic, strike, code, H1/H2, link). Ctrl+click a link to open it in your browser.
 - **Drag handle** (⠿) on the left of each block to move it.
 - **Images:** paste, drag in, or use `/image`. They're copied to `<Section>/assets/` and linked as `![](assets/name.png)`, so they also show up in other Markdown viewers.
-- **`[[Wiki Links]]`** are kept exactly and shown as chips. Clicking them and backlinks come in Phase 4.
+- **`[[Wiki Links]]`** typed in a page are kept exactly and shown as chips.
 - **Readable files:** text is only escaped where Markdown actually needs it, so `snake_case`, `5 * 3` and `fish & chips` stay as typed.
 - **Your existing notes are protected:**
   - A file is only rewritten after you actually edit it.
@@ -72,8 +86,10 @@ drives and Windows.
 Requires Node.js 20+ (22 recommended):
 
 ```bash
-./run.sh           # installs Node.js and packages if needed, then starts the app
+./run.sh           # installs Node.js and packages if needed, builds if the code changed, then starts the app
 ```
+
+For development with hot reload use `npm run dev`. The packaged build (`./run.sh` / `npm start`) is the one that is fully offline.
 
 or by hand: `npm install && npm run dev`. If Electron exits with a sandbox error on
 Chromebook Linux, use `./run.sh --noSandbox`.

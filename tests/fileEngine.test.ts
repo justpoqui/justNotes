@@ -270,6 +270,31 @@ describe('FileEngine — editing (Phase 3)', () => {
   })
 })
 
+describe('FileEngine — whiteboards', () => {
+  beforeEach(async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await engine.createPage('N', 'S', 'P')
+  })
+
+  it('has no whiteboard until one is saved', async () => {
+    expect(await engine.readCanvas('N', 'S', 'P')).toBeNull()
+  })
+
+  it('saves <Page>.canvas.json next to the page and reports it in the tree', async () => {
+    await engine.writeCanvas('N', 'S', 'P', '{"type":"excalidraw","elements":[]}')
+    expect(await engine.readCanvas('N', 'S', 'P')).toBe('{"type":"excalidraw","elements":[]}')
+    expect((await fs.readdir(path.join(engine.root, 'N', 'S'))).sort()).toEqual(['P.canvas.json', 'P.md'])
+    expect((await engine.listTree()).notebooks[0].sections[0].pages[0].hasCanvas).toBe(true)
+  })
+
+  it('will not create an orphan whiteboard for a missing page', async () => {
+    await engine.deletePage('N', 'S', 'P')
+    expect(await code(engine.writeCanvas('N', 'S', 'P', '{}'))).toBe('NOT_FOUND')
+    expect(await fs.readdir(path.join(engine.root, 'N', 'S'))).toEqual([])
+  })
+})
+
 describe('watchFolder', () => {
   it('reports changes anywhere under the root, debounced', async () => {
     await engine.ensureRoot()

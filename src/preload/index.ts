@@ -1,7 +1,7 @@
 // Runs in an isolated context. Exposes only the typed `window.wiki` API —
 // the renderer never gets direct access to Node, fs or ipcRenderer.
 
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webFrame } from 'electron'
 import type { WikiApi } from '../shared/types'
 
 const call =
@@ -23,6 +23,14 @@ const api: WikiApi = {
   deletePage: call('deletePage'),
   readPage: call('readPage'),
   writePage: call('writePage'),
+  readCanvas: call('readCanvas'),
+  writeCanvas: call('writeCanvas'),
+  setTheme: call('setTheme'),
+  zoom: (direction) => {
+    const level = direction === 'reset' ? 0 : Math.max(-3, Math.min(4, webFrame.getZoomLevel() + (direction === 'in' ? 0.5 : -0.5)))
+    webFrame.setZoomLevel(level)
+    return webFrame.getZoomFactor()
+  },
   saveAsset: call('saveAsset'),
   pickImage: call('pickImage'),
   openRootFolder: call('openRootFolder'),

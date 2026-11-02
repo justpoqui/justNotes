@@ -6,6 +6,7 @@ import type { EngineError, Result, Tree } from '../../shared/types'
 import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog'
 import { ContextMenu, type MenuItem } from './components/ContextMenu'
 import { PageView } from './components/PageView'
+import { Ribbon, type PageMode } from './components/Ribbon'
 import { childKindOf, Sidebar, type Editing, type SidebarActions } from './components/Sidebar'
 import { flushAllSaves } from './editor/saveCoordinator'
 import { load, save } from './lib/storage'
@@ -35,10 +36,22 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [width, setWidth] = useState(() => load('jn.sidebarWidth', 260))
   const firstLoad = useRef(!localStorage.getItem('jn.expanded'))
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => load('jn.theme', 'dark'))
+  const [sidebarVisible, setSidebarVisible] = useState(() => load('jn.sidebarVisible', true))
+  // Per page: show the text page or its whiteboard (remembered between runs).
+  const [pageModes, setPageModes] = useState<Record<string, PageMode>>(() => load('jn.pageModes', {}))
+  const [zoom, setZoom] = useState(1)
 
   useEffect(() => save('jn.expanded', [...expanded]), [expanded])
   useEffect(() => save('jn.selected', selectedKey), [selectedKey])
   useEffect(() => save('jn.sidebarWidth', width), [width])
+  useEffect(() => save('jn.sidebarVisible', sidebarVisible), [sidebarVisible])
+  useEffect(() => save('jn.pageModes', pageModes), [pageModes])
+  useEffect(() => {
+    save('jn.theme', theme)
+    document.documentElement.dataset.theme = theme
+    void api.setTheme(theme)
+  }, [theme])
 
   // Errors that aren't shown inline appear as a toast for a few seconds.
   useEffect(() => {
@@ -94,6 +107,7 @@ export function App() {
     })
 
   const startCreate = (parentKey: string | null) => {
+    setSidebarVisible(true) // names are typed into the tree
     // "New page" on a page means a sibling page in the same section.
     const parent = parentKey && kindOf(parentKey) === 'page' ? parentOf(parentKey) : parentKey
     if (parent) expand(parentOf(parent), parent)
@@ -148,6 +162,7 @@ export function App() {
     if (editing.mode === 'rename') {
       const from = editing.key
       setExpanded((prev) => new Set([...prev].map((k) => remapKey(k, from, key))))
+      setPageModes((prev) => Object.fromEntries(Object.entries(prev).map(([k, v]) => [remapKey(k, from, key), v])))
     } else if (editing.kind !== 'page') {
       expand(key)
     }
@@ -224,6 +239,22 @@ export function App() {
     ]
   }
 
+  const selectedKind = selectedKey ? kindOf(selectedKey) : null
+  const mode: PageMode = selectedKey && selectedKind === 'page' ? (pageModes[selectedKey] ?? 'page') : 'page'
+  const setMode = (m: PageMode) => {
+    if (!selectedKey || selectedKind !== 'page') return
+    void flushAllSaves()
+    setPageModes((prev) => {
+      const next = { ...prev }
+      if (m === 'page') delete next[selectedKey]
+      else next[selectedKey] = m
+      return next
+    })
+  }
+  // Folders a ribbon "New page" / "New section" would go into.
+  const sectionKey = selectedKey && selectedKind !== 'notebook' ? (selectedKind === 'page' ? parentOf(selectedKey) : selectedKey) : null
+  const notebookKey = selectedKey ? refOf(selectedKey).notebook : null
+
   const startResize = (e: React.MouseEvent) => {
     e.preventDefault()
     const startX = e.clientX
@@ -240,17 +271,47 @@ export function App() {
   }
 
   return (
-    <div className="layout" style={{ '--sidebar-width': `${width}px` } as React.CSSProperties}>
-      <Sidebar tree={tree} rows={rows} expanded={expanded} selectedKey={selectedKey} editing={editing} actions={actions} />
-      <div
-        className="resizer"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize sidebar"
-        onMouseDown={startResize}
-        onDoubleClick={() => setWidth(260)}
+    <div className="app-shell">
+      <Ribbon
+        sectionKey={sectionKey}
+        notebookKey={notebookKey}
+        hasPage={selectedKind === 'page'}
+        mode={mode}
+        setMode={setMode}
+        startCreate={startCreate}
+        sidebarVisible={sidebarVisible}
+        toggleSidebar={() => setSidebarVisible((v) => !v)}
+        theme={theme}
+        setTheme={setTheme}
+        zoom={zoom}
+        onZoom={(d) => setZoom(api.zoom(d))}
+        openRootFolder={actions.openRootFolder}
+        revealPage={async () => void (selectedKey && check(await api.showInFolder(refOf(selectedKey))))}
       />
-      <PageView tree={tree} selectedKey={selectedKey} select={setSelectedKey} startCreate={startCreate} notify={setToast} />
+      <div
+        className={`layout${sidebarVisible ? '' : ' no-sidebar'}`}
+        style={{ '--sidebar-width': `${sidebarVisible ? width : 0}px` } as React.CSSProperties}
+      >
+        {sidebarVisible && <Sidebar tree={tree} rows={rows} expanded={expanded} selectedKey={selectedKey} editing={editing} actions={actions} />}
+        <div
+          className="resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          onMouseDown={sidebarVisible ? startResize : undefined}
+          onDoubleClick={() => setWidth(260)}
+        />
+        <PageView
+          tree={tree}
+          selectedKey={selectedKey}
+          select={setSelectedKey}
+          startCreate={startCreate}
+          notify={setToast}
+          mode={mode}
+          setMode={setMode}
+          theme={theme}
+        />
+      </div>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.key)} onClose={() => setMenu(null)} />}
       {confirm && <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />}

@@ -78,10 +78,20 @@ export interface WikiApi {
   /** Saves a page's Markdown (atomically). Fails with NOT_FOUND if the page is gone. */
   writePage(notebook: string, section: string, name: string, content: string): Promise<Result<void>>
 
+  /** The page's whiteboard file (<Page>.canvas.json) as text, or null if there is none yet. */
+  readCanvas(notebook: string, section: string, name: string): Promise<Result<string | null>>
+  /** Saves the page's whiteboard next to the page (atomically). */
+  writeCanvas(notebook: string, section: string, name: string, content: string): Promise<Result<void>>
+
   /** Stores image bytes in the section's assets/ folder; resolves to the relative path for Markdown. */
   saveAsset(notebook: string, section: string, fileName: string, data: Uint8Array): Promise<Result<string>>
   /** Shows a file picker and copies the chosen image into assets/. Resolves to null if cancelled. */
   pickImage(notebook: string, section: string): Promise<Result<string | null>>
+
+  /** Window zoom: step in/out, or reset to 100%. Resolves to the new zoom factor. */
+  zoom(direction: 'in' | 'out' | 'reset'): number
+  /** Makes native parts of the window (menus, dialogs, scrollbars) follow the app theme. */
+  setTheme(theme: 'dark' | 'light'): Promise<Result<void>>
 
   /** Opens the WikiBook folder in the system file manager. */
   openRootFolder(): Promise<Result<void>>
