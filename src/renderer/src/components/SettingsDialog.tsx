@@ -1,4 +1,4 @@
-// Settings window (File ▸ Settings, the ⚙ in the title bar, or Ctrl+,).
+// Settings window (File ▸ Settings, or Ctrl+,).
 
 import React, { useEffect, useRef, useState } from 'react'
 import { DEFAULT_SETTINGS, updateSettings, useSettings } from '../lib/settings'

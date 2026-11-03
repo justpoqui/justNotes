@@ -183,9 +183,6 @@ export function Ribbon(props: Props) {
           </button>
         ))}
         <span className="titlebar-drag" />
-        <button className="win-btn" title="Settings (Ctrl+,)" aria-label="Settings" onClick={props.onOpenSettings}>
-          <Ic.Gear />
-        </button>
         <WindowButtons />
       </div>
 

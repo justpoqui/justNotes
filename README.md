@@ -36,7 +36,7 @@ AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network call
   - underline, saved as `<u>…</u>`
   - font family from your installed fonts (no downloads), saved in the same `<span style>` as size and colour
   - align left / center / right / justify. A centered paragraph is saved as `<div align="center">` around normal Markdown, which GitHub shows too.
-- **Settings** (File → Settings, the ⚙ in the title bar, or Ctrl+,):
+- **Settings** (File → Settings or Ctrl+,):
   - theme, page font and size, word count, autosave timing
   - turning each proofing feature on or off
   - your AutoCorrect list and personal dictionary
