@@ -251,10 +251,6 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
       exportPdf: () =>
         void window.wiki.exportPdf(html(), page).then((r) => {
           if (!r.ok) onErrorRef.current(r.error.message)
-        }),
-      print: () =>
-        void window.wiki.printPage(html(), page).then((r) => {
-          if (!r.ok) onErrorRef.current(r.error.message)
         })
     }
     setActivePage(owner)

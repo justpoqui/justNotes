@@ -50,7 +50,6 @@ const api: WikiApi = {
     }
   },
   exportPdf: call('exportPdf'),
-  printPage: call('printPage'),
   listFonts: call('listFonts'),
   editCommand: (cmd) => ipcRenderer.send('edit:command', cmd),
   windowControls: {

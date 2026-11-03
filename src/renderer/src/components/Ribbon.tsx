@@ -139,7 +139,7 @@ function Group({ label, children }: { label: string; children: React.ReactNode }
 export function Ribbon(props: Props) {
   const [tab, setTab] = useState<Tab>(() => load<Tab>('jn.ribbonTab', 'Home'))
   useEffect(() => save('jn.ribbonTab', tab), [tab])
-  const { editor, board, insertImage, openFind, exportPdf, print } = useActivePage()
+  const { editor, board, insertImage, openFind, exportPdf } = useActivePage()
   const [fonts, setFonts] = useState<string[]>([])
   useEffect(() => {
     void window.wiki.listFonts().then((r) => r.ok && setFonts(r.data))
@@ -200,7 +200,6 @@ export function Ribbon(props: Props) {
             </Group>
             <Group label="Page">
               <Btn icon={Ic.Pdf} label="Export PDF" wide disabled={!exportPdf || props.mode !== 'page'} title="Save the open page as a PDF" onClick={() => exportPdf?.()} />
-              <Btn icon={Ic.Printer} label="Print" disabled={!print || props.mode !== 'page'} title="Print the open page" onClick={() => print?.()} />
             </Group>
             <Group label="Files">
               <Btn icon={Ic.Reveal} label="Show notebook folder" wide disabled={!props.notebookKey} onClick={props.onRevealNotebook} />

@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { EngineFailure, FileEngine, IMAGE_EXTS } from './fileEngine'
-import { exportPdf, printPage } from './printing'
+import { exportPdf } from './printing'
 import type { Result } from '../shared/types'
 
 async function wrap<T>(fn: () => Promise<T> | T): Promise<Result<T>> {
@@ -85,7 +85,6 @@ export function registerIpc(engine: FileEngine): void {
     },
 
     exportPdf: (html, title) => exportPdf(BrowserWindow.getFocusedWindow(), String(html), String(title)),
-    printPage: (html, title) => printPage(String(html), String(title)),
     listFonts: () => listFonts(),
     openRootFolder: async () => {
       await engine.ensureRoot()

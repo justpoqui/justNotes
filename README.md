@@ -31,7 +31,7 @@ AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network call
 - **AutoFormat:** (c) → ©, (tm) → ™, ` -- ` → –, `->` → →, `...` → …, `1/2` → ½, `!=` → ≠, and “smart quotes”.
 - **Ctrl+Z straight after any automatic change** puts back exactly what you typed. That word is then left alone for the rest of the session.
 - **Find & Replace:** Ctrl+F / Ctrl+H, or Home → Find / Replace. Includes match case, whole words, and replace one or all.
-- **Export PDF** and **Print** under File.
+- **Export PDF** under File.
 - **Formatting** added to the Home tab:
   - underline, saved as `<u>…</u>`
   - font family from your installed fonts (no downloads), saved in the same `<span style>` as size and colour

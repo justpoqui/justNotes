@@ -21,14 +21,13 @@ export interface ActivePage {
   insertImage: (() => void) | null
   /** Opens the find bar (with the replace row if asked). */
   openFind: ((replace: boolean) => void) | null
-  /** Export the open page as PDF / print it. */
+  /** Export the open page as PDF. */
   exportPdf: (() => void) | null
-  print: (() => void) | null
   /** Word / character counts of the open page (status bar). */
   stats: { words: number; chars: number; charsNoSpaces: number; selWords: number; selChars: number } | null
 }
 
-let current: ActivePage = { editor: null, board: null, insertImage: null, openFind: null, exportPdf: null, print: null, stats: null }
+let current: ActivePage = { editor: null, board: null, insertImage: null, openFind: null, exportPdf: null, stats: null }
 const listeners = new Set<() => void>()
 
 export function setActivePage(patch: Partial<ActivePage>): void {

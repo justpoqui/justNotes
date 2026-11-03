@@ -1,5 +1,5 @@
-// Export a page as PDF, or print it. The page's HTML is rendered on its own in a
-// hidden window (scripts disabled), styled for paper, then printed / saved.
+// Export a page as PDF. The page's HTML is rendered on its own in a hidden
+// window (scripts disabled), styled for paper, then saved.
 
 import { BrowserWindow, dialog } from 'electron'
 import { promises as fs } from 'node:fs'
@@ -73,12 +73,4 @@ export async function exportPdf(owner: BrowserWindow | null, html: string, title
   } finally {
     await cleanup()
   }
-}
-
-/** Opens the system print dialog for the page. */
-export async function printPage(html: string, title: string): Promise<void> {
-  const { win, cleanup } = await renderPage(html, title)
-  await new Promise<void>((resolve, reject) =>
-    win.webContents.print({ printBackground: true }, (ok, reason) => (ok || reason === 'cancelled' ? resolve() : reject(new EngineFailure('IO_ERROR', `Printing failed: ${reason}`))))
-  ).finally(cleanup)
 }
