@@ -1,4 +1,6 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, session, shell } from 'electron'
+import os from 'node:os'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { FileEngine } from './fileEngine'
 import { registerIpc } from './ipc'
@@ -85,7 +87,39 @@ app.whenReady().then(async () => {
   nativeTheme.themeSource = 'dark'
   const engine = new FileEngine(await resolveNotesRoot())
   await engine.ensureRoot().catch((err) => console.error(err))
+  void engine.cleanupTempFiles().catch(() => {})
   registerIpc(engine)
+
+  // Network rules for everything the app loads (main window, whiteboard, print/PDF page):
+  //  - no internet at all: every http(s)/websocket request is cancelled (except the local
+  //    dev server when running `npm run dev`), so a web picture in a note is never fetched;
+  //  - local files only from the app itself, the notes folder and the temporary print page.
+  // Links you Ctrl+click still open in your normal browser (that doesn't go through here).
+  const devServer = process.env.ELECTRON_RENDERER_URL ? new URL(process.env.ELECTRON_RENDERER_URL).host : null
+  const allowedDirs = [path.join(__dirname, '..'), engine.root].map((d) => path.resolve(d) + path.sep)
+  const printPrefix = path.join(os.tmpdir(), 'justnotes-print-')
+  session.defaultSession.webRequest.onBeforeRequest({ urls: ['file://*/*', 'http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (details, callback) => {
+    const url = new URL(details.url)
+    if (url.protocol !== 'file:') {
+      const ok = devServer !== null && url.host === devServer
+      if (!ok) console.warn('Blocked network request:', details.url)
+      return callback({ cancel: !ok })
+    }
+    let file = ''
+    try {
+      file = path.resolve(fileURLToPath(details.url))
+    } catch {
+      return callback({ cancel: true })
+    }
+    const ok = allowedDirs.some((d) => file.startsWith(d)) || file.startsWith(printPrefix)
+    if (!ok) console.warn('Blocked file access:', file)
+    callback({ cancel: !ok })
+  })
+  // Chromium's own spellchecker downloads dictionaries from Google (even when switched off,
+  // and outside the rules above); justNotes has its own offline one. Point that download at
+  // a closed port on this computer so nothing ever leaves the machine.
+  session.defaultSession.setSpellCheckerEnabled(false)
+  session.defaultSession.setSpellCheckerDictionaryDownloadURL('http://127.0.0.1:9/')
   handleAssetProtocol(engine)
   handleAppAssetProtocol(path.join(__dirname, '../renderer'))
   // Tell every window when something in the notes folder changes.

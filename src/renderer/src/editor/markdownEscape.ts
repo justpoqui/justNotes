@@ -10,7 +10,19 @@ const isSpace = (c: string | undefined) => c !== undefined && /\s/.test(c)
 const isWordChar = (c: string | undefined) => c !== undefined && /[\p{L}\p{N}]/u.test(c)
 const ASCII_PUNCT = /[!-/:-@[-`{-~]/
 
-export function escapeMarkdownText(text: string): string {
+const ENTITY: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;' }
+
+/**
+ * For text inside an HTML tag the editor writes (coloured / sized / underlined text):
+ * it's read back as HTML, but Markdown still scans it first, so characters that would
+ * look like Markdown (==, *, _, `, [, ...) are written as HTML character codes,
+ * which turn back into exactly the same characters.
+ */
+export function escapeHtmlText(text: string): string {
+  return escapeMarkdownText(text, true)
+}
+
+export function escapeMarkdownText(text: string, asHtml = false): string {
   let out = ''
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
@@ -52,12 +64,17 @@ export function escapeMarkdownText(text: string): string {
         // Only when it looks like an entity, e.g. "&amp;" or "&#42;".
         escape = /^&(#\d+|#x[\da-f]+|[a-z][a-z\d]*);/i.test(text.slice(i))
         break
+      case '=':
+        // "==text==" is highlight syntax.
+        escape = next === '=' || prev === '='
+        break
       case '|':
         // Would split a table cell. Rare outside tables, harmless to escape.
         escape = true
         break
     }
-    out += escape ? '\\' + c : c
+    if (asHtml) out += ENTITY[c] ?? (escape || c === '\\' || c === '=' ? `&#${c.codePointAt(0)};` : c)
+    else out += escape ? '\\' + c : c
   }
   return out
 }

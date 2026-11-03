@@ -34,10 +34,12 @@ const escapeHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 
 /** Loads the page HTML into a hidden, script-less window. */
 async function renderPage(html: string, title: string): Promise<{ win: BrowserWindow; cleanup: () => Promise<void> }> {
-  const doc = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>${PRINT_CSS}</style></head><body>${html}</body></html>`
+  // Strict policy: no scripts, nothing from the internet (pictures only from the notes / app).
+  const csp = "default-src 'none'; style-src 'unsafe-inline'; img-src wiki-file: file: data: blob:; font-src file: data: jn-asset:"
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><title>${escapeHtml(title)}</title><style>${PRINT_CSS}</style></head><body>${html}</body></html>`
   const file = path.join(os.tmpdir(), `justnotes-print-${process.pid}-${Date.now()}.html`)
   await fs.writeFile(file, doc, 'utf8')
-  const win = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true, contextIsolation: true, nodeIntegration: false } })
+  const win = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false } })
   await win.loadFile(file)
   // Give pictures a moment to load.
   await new Promise((r) => setTimeout(r, 300))

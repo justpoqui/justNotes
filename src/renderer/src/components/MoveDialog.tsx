@@ -1,6 +1,6 @@
 // "Move…" for a page: pick a notebook, then the section to move it into.
 
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { EngineError, Tree } from '../../../shared/types'
 import { refOf } from '../lib/tree'
 import { SECTION_COLORS } from './SectionTabs'
@@ -19,6 +19,8 @@ export function MoveDialog({ tree, pageKey, onMove, onClose }: Props) {
   const [target, setTarget] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  useEffect(() => formRef.current?.focus(), []) // so Esc works straight away
   const sections = tree.notebooks.find((n) => n.name === nb)?.sections ?? []
 
   const submit = async () => {
@@ -32,6 +34,8 @@ export function MoveDialog({ tree, pageKey, onMove, onClose }: Props) {
   return (
     <div className="backdrop" onMouseDown={onClose}>
       <form
+        ref={formRef}
+        tabIndex={-1}
         className="dialog move-dialog"
         role="dialog"
         aria-modal="true"

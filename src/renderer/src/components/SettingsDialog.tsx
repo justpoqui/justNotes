@@ -1,6 +1,6 @@
 // Settings window (File ▸ Settings, the ⚙ in the title bar, or Ctrl+,).
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { DEFAULT_SETTINGS, updateSettings, useSettings } from '../lib/settings'
 import { COMMON_TYPOS } from '../proofing/typos'
 
@@ -34,6 +34,8 @@ export function SettingsDialog({ theme, setTheme, onClose }: Props) {
   const [to, setTo] = useState('')
   const [newWord, setNewWord] = useState('')
   const [filter, setFilter] = useState('')
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => dialogRef.current?.focus(), []) // so Esc works straight away
 
   useEffect(() => {
     void window.wiki.listFonts().then((r) => r.ok && setFonts(r.data))
@@ -57,7 +59,7 @@ export function SettingsDialog({ theme, setTheme, onClose }: Props) {
 
   return (
     <div className="backdrop" onMouseDown={onClose}>
-      <div className="dialog settings-dialog" role="dialog" aria-modal="true" aria-label="Settings" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div ref={dialogRef} tabIndex={-1} className="dialog settings-dialog" role="dialog" aria-modal="true" aria-label="Settings" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <div className="settings-head">
           <h2>Settings</h2>
           <button className="icon-btn" aria-label="Close settings" onClick={onClose}>

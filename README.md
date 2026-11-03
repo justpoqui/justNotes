@@ -155,4 +155,11 @@ To use a throwaway folder instead of `~/Documents/justNotes`:
 JUSTNOTES_ROOT=/tmp/justnotes-test ./run.sh
 ```
 
-Other scripts: `npm test` (engine unit tests), `npm run typecheck`, `npm run build`.
+Other scripts:
+
+| Script | What it does |
+|---|---|
+| `npm test` | Unit and Markdown round-trip tests |
+| `npm run test:stress` | Stress tests: 10,000 pages, 200 overlapping saves, races, a 1,000-file storm, and 400 random documents saved and reloaded (more with `FUZZ_N=2000 FUZZ_SEED=7`) |
+| `npm run typecheck` | Type-checks the code |
+| `npm run build` | Builds the app |

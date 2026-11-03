@@ -354,3 +354,18 @@ describe('watchFolder', () => {
   })
 })
 
+describe('crash leftovers', () => {
+  it('removes old temp files from interrupted saves, but not recent ones', async () => {
+    await engine.createNotebook('N')
+    await engine.createSection('N', 'S')
+    await engine.createPage('N', 'S', 'P')
+    const dir = path.join(engine.root, 'N', 'S')
+    await fs.writeFile(path.join(dir, '.P.md.1a2b3c4d.tmp'), 'half')
+    await fs.writeFile(path.join(dir, '.P.md.9f8e7d6c.tmp'), 'in progress')
+    const old = new Date(Date.now() - 5 * 60_000)
+    await fs.utimes(path.join(dir, '.P.md.1a2b3c4d.tmp'), old, old)
+    expect(await engine.cleanupTempFiles()).toBe(1)
+    expect((await fs.readdir(dir)).sort()).toEqual(['.P.md.9f8e7d6c.tmp', 'P.md'])
+  })
+})
+

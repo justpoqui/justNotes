@@ -6,6 +6,7 @@
 // Every page is a plain Markdown file and folders are the hierarchy, so the
 // notes stay readable without the app.
 
+import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type {
@@ -26,6 +27,14 @@ const MAX_NAME_LENGTH = 120
 export const ASSETS_DIR = 'assets'
 export const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif'])
 const MAX_ASSET_BYTES = 25 * 1024 * 1024
+
+/**
+ * A unique hidden temp file next to `file` (saves write here first, then rename
+ * over the real file). Unique per call, so overlapping saves never collide.
+ */
+const tempPathFor = (file: string) => path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID().slice(0, 8)}.tmp`)
+/** Leftover temp files from a crash look like this. */
+export const TEMP_FILE = /^\..+\.[0-9a-f]{8}\.tmp$/
 
 /** An error with a code the UI can react to. */
 export class EngineFailure extends Error {
@@ -105,6 +114,48 @@ export class FileEngine {
 
   constructor(root: string) {
     this.root = path.resolve(root)
+    // Changes to the folder structure run one at a time, so two at once can't both pass
+    // the duplicate-name check (e.g. "Ideas" and "ideas" created in the same instant).
+    for (const m of ['createNotebook', 'renameNotebook', 'deleteNotebook', 'createSection', 'renameSection', 'deleteSection', 'createPage', 'renamePage', 'movePage', 'deletePage'] as const) {
+      const original = (this[m] as (...args: unknown[]) => Promise<unknown>).bind(this)
+      ;(this as unknown as Record<string, unknown>)[m] = (...args: unknown[]) => this.exclusive(() => original(...args))
+    }
+  }
+
+  private queue: Promise<unknown> = Promise.resolve()
+  private exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn, fn)
+    this.queue = run.catch(() => {})
+    return run
+  }
+
+  /**
+   * Removes temp files left behind if the app was killed in the middle of a save
+   * (only ones older than a minute, so a save in progress is never touched).
+   */
+  async cleanupTempFiles(): Promise<number> {
+    let removed = 0
+    const sweep = async (dir: string, depth: number): Promise<void> => {
+      let entries
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true })
+      } catch {
+        return
+      }
+      for (const e of entries) {
+        const full = path.join(dir, e.name)
+        if (e.isDirectory() && depth < 2 && !e.name.startsWith('.')) await sweep(full, depth + 1)
+        else if (e.isFile() && TEMP_FILE.test(e.name)) {
+          const st = await fs.stat(full).catch(() => null)
+          if (st && Date.now() - st.mtimeMs > 60_000) {
+            await fs.rm(full, { force: true })
+            removed++
+          }
+        }
+      }
+    }
+    await sweep(this.root, 0)
+    return removed
   }
 
   // ---------- paths ----------
@@ -461,7 +512,7 @@ export class FileEngine {
     if (!(await this.isFile(file))) {
       throw new EngineFailure('NOT_FOUND', `Page "${name}" no longer exists on disk, so your changes could not be saved.`)
     }
-    const tmp = path.join(path.dirname(file), `.${name}.md.${process.pid}.${Date.now()}.tmp`)
+    const tmp = tempPathFor(file)
     try {
       await fs.writeFile(tmp, content, 'utf8')
       await fs.rename(tmp, file)
@@ -548,7 +599,7 @@ export class FileEngine {
       throw new EngineFailure('NOT_FOUND', `Page "${name}" no longer exists on disk, so the whiteboard could not be saved.`)
     }
     const file = this.canvasFile(nb, sec, name)
-    const tmp = path.join(path.dirname(file), `.${name}.canvas.${process.pid}.${Date.now()}.tmp`)
+    const tmp = tempPathFor(file)
     try {
       await fs.writeFile(tmp, content, 'utf8')
       await fs.rename(tmp, file)
