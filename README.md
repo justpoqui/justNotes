@@ -11,6 +11,15 @@ AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network call
 
 ## Status
 
+**Status bar and auto-scroll:**
+
+- **Status bar** along the bottom of the window:
+  - word and character counts for the open page, or "12 of 340 words" for a selection
+  - undo and redo
+  - **page zoom** (50–200%) with − / + buttons, a slider and a percentage. Click the percentage to reset to 100%.
+  - The page zoom only enlarges the page and is remembered. View → App size still scales the whole app.
+- **Auto-scroll while typing:** the page scrolls before the cursor reaches the bottom edge, keeping your line about 160 px above the status bar. It also keeps the cursor clear of the bar at the top.
+
 **Proofing, Find & Replace, PDF, more formatting, Settings:**
 
 - **Spell-check:** a red wavy underline marks misspelled words. Right-click one for suggestions, **Add to dictionary** or **Ignore**. It uses a bundled English (US) Hunspell dictionary, so it works offline.
@@ -21,7 +30,6 @@ AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network call
   - anything less certain only gets the underline, with suggestions on right-click
 - **AutoFormat:** (c) → ©, (tm) → ™, ` -- ` → –, `->` → →, `...` → …, `1/2` → ½, `!=` → ≠, and “smart quotes”.
 - **Ctrl+Z straight after any automatic change** puts back exactly what you typed. That word is then left alone for the rest of the session.
-- **Word count** in the page bar. Select text to see "12 of 340 words", and hover for character counts.
 - **Find & Replace:** Ctrl+F / Ctrl+H, or Home → Find / Replace. Includes match case, whole words, and replace one or all.
 - **Export PDF** and **Print** under File.
 - **Formatting** added to the Home tab:

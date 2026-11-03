@@ -111,7 +111,7 @@ export function SettingsDialog({ theme, setTheme, onClose }: Props) {
                     ))}
                   </select>
                 </div>
-                <Check label="Show word count" hint="In the bar above each page. Hover it for character counts." checked={s.wordCount} onChange={(v) => updateSettings({ wordCount: v })} />
+                <Check label="Show word and character count" hint="In the status bar at the bottom of the window (words and characters)." checked={s.wordCount} onChange={(v) => updateSettings({ wordCount: v })} />
 
                 <h3>Saving</h3>
                 <div className="set-row">

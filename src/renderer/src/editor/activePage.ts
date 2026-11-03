@@ -24,9 +24,11 @@ export interface ActivePage {
   /** Export the open page as PDF / print it. */
   exportPdf: (() => void) | null
   print: (() => void) | null
+  /** Word / character counts of the open page (status bar). */
+  stats: { words: number; chars: number; charsNoSpaces: number; selWords: number; selChars: number } | null
 }
 
-let current: ActivePage = { editor: null, board: null, insertImage: null, openFind: null, exportPdf: null, print: null }
+let current: ActivePage = { editor: null, board: null, insertImage: null, openFind: null, exportPdf: null, print: null, stats: null }
 const listeners = new Set<() => void>()
 
 export function setActivePage(patch: Partial<ActivePage>): void {

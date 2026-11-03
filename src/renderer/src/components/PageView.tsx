@@ -5,6 +5,7 @@ import React, { useState } from 'react'
 import type { Tree } from '../../../shared/types'
 import { kindOf, refOf } from '../lib/tree'
 import { NotebookIcon, PageIcon, SectionIcon } from './Icons'
+import { useSettings } from '../lib/settings'
 import { PageEditor } from './PageEditor'
 import type { PageMode } from './Ribbon'
 import { BoardMode, PageMode as PageModeIcon } from './RibbonIcons'
@@ -23,6 +24,7 @@ interface Props {
 }
 
 export function PageView({ tree, selectedKey, select, startCreate, notify, mode, setMode, theme, onOpenNotebook }: Props) {
+  const pageZoom = useSettings().pageZoom || 1
   // Where the editor / whiteboard show their "Saved" indicator.
   const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null)
 
@@ -106,7 +108,7 @@ export function PageView({ tree, selectedKey, select, startCreate, notify, mode,
         boardMode ? (
           <Whiteboard key={selectedKey} notebook={ref.notebook} section={ref.section!} page={ref.page!} theme={theme} onError={notify} statusSlot={statusSlot} />
         ) : (
-          <article className="page">
+          <article className="page" style={{ zoom: pageZoom }}>
             <PageEditor key={selectedKey} notebook={ref.notebook} section={ref.section!} page={ref.page!} onError={notify} statusSlot={statusSlot} />
           </article>
         )

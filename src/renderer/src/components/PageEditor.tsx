@@ -12,7 +12,7 @@ import { findUnsupported, splitFrontMatter } from '../editor/preserve'
 import { clearActivePage, setActivePage } from '../editor/activePage'
 import { registerFlusher } from '../editor/saveCoordinator'
 import { Search } from '../editor/Search'
-import { getSettings, updateSettings, useSettings } from '../lib/settings'
+import { getSettings, updateSettings } from '../lib/settings'
 import { ignoredWords, Proofing, refreshSpelling } from '../proofing/Proofing'
 import { getSpellChecker } from '../proofing/spellchecker'
 import { ContextMenu, type MenuItem } from './ContextMenu'
@@ -64,7 +64,7 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
   const [menu, setMenu] = useState<{ x: number; y: number; items: (MenuItem | 'sep')[] } | null>(null)
   const findOpen = useRef(false)
   findOpen.current = find !== null
-  const [stats, setStats] = useState<WordStats>({ words: 0, chars: 0, charsNoSpaces: 0, selWords: 0 })
+  const [stats, setStats] = useState<WordStats>({ words: 0, chars: 0, charsNoSpaces: 0, selWords: 0, selChars: 0 })
   const statsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const scheduleStats = (ed: Editor) => {
     clearTimeout(statsTimer.current)
@@ -191,6 +191,10 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
       autofocus: false,
       editorProps: {
         attributes: { class: 'prose', spellcheck: 'false' },
+        // Keep the cursor comfortably inside the window while typing: scroll before it reaches
+        // the bottom edge (and stay clear of the sticky page bar at the top).
+        scrollThreshold: { top: 90, bottom: 140, left: 0, right: 0 },
+        scrollMargin: { top: 90, bottom: 160, left: 0, right: 0 },
         handlePaste: (_view, event) => {
           const files = [...(event.clipboardData?.files ?? [])].filter(isImageFile)
           if (files.length === 0) return false
@@ -228,6 +232,10 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
     [extensions]
   )
   editorRef.current = editor
+
+  // Word/character counts for the status bar at the bottom of the window.
+  useEffect(() => setActivePage({ stats }), [stats])
+  useEffect(() => () => setActivePage({ stats: null }), [])
 
   // Make this editor the ribbon's target while it's open.
   useEffect(() => {
@@ -361,15 +369,7 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
 
   return (
     <div className="editor-wrap" onContextMenu={onContextMenu}>
-      {statusSlot
-        ? createPortal(
-            <>
-              <WordCount stats={stats} />
-              <SaveIndicator status={status} />
-            </>,
-            statusSlot
-          )
-        : <SaveIndicator status={status} />}
+      {statusSlot ? createPortal(<SaveIndicator status={status} />, statusSlot) : <SaveIndicator status={status} />}
       {find && editor && (
         <FindBar
           editor={editor}
@@ -435,6 +435,7 @@ export interface WordStats {
   chars: number
   charsNoSpaces: number
   selWords: number
+  selChars: number
 }
 
 const countWords = (t: string) => t.match(/[\p{L}\p{N}][\p{L}\p{N}'’_-]*/gu)?.length ?? 0
@@ -446,20 +447,9 @@ function computeStats(editor: Editor): WordStats {
     words: countWords(text),
     chars: text.length,
     charsNoSpaces: text.replace(/\s/g, '').length,
-    selWords: selection.empty ? 0 : countWords(doc.textBetween(selection.from, selection.to, ' ', ' '))
+    selWords: selection.empty ? 0 : countWords(doc.textBetween(selection.from, selection.to, ' ', ' ')),
+    selChars: selection.empty ? 0 : doc.textBetween(selection.from, selection.to, ' ', ' ').length
   }
-}
-
-/** "123 words" in the page bar (or "12 of 123 words" for a selection); hover for details. */
-function WordCount({ stats }: { stats: WordStats }) {
-  const { wordCount } = useSettings()
-  if (!wordCount) return null
-  const n = (x: number) => x.toLocaleString()
-  return (
-    <span className="word-count" title={`${n(stats.words)} words\n${n(stats.chars)} characters (with spaces)\n${n(stats.charsNoSpaces)} characters (no spaces)`}>
-      {stats.selWords ? `${n(stats.selWords)} of ${n(stats.words)} words` : `${n(stats.words)} word${stats.words === 1 ? '' : 's'}`}
-    </span>
-  )
 }
 
 function SaveIndicator({ status }: { status: SaveStatus }) {

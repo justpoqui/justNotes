@@ -12,6 +12,7 @@ import { PageView } from './components/PageView'
 import { Ribbon, type PageMode } from './components/Ribbon'
 import { SectionTabs } from './components/SectionTabs'
 import { SettingsDialog } from './components/SettingsDialog'
+import { StatusBar } from './components/StatusBar'
 import { Sidebar, type Editing, type PageRow, type SidebarActions } from './components/Sidebar'
 import { flushAllSaves } from './editor/saveCoordinator'
 import { useSettings } from './lib/settings'
@@ -456,6 +457,8 @@ export function App() {
           onOpenNotebook={() => setNotebookDialog({ mode: 'open' })}
         />
       </div>
+
+      <StatusBar mode={mode} hasPage={selectedKind === 'page'} />
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.key)} onClose={() => setMenu(null)} />}
       {confirm && <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />}

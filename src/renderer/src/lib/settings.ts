@@ -26,7 +26,7 @@ export interface Settings {
   replacements: Replacement[]
   /** Words added with "Add to dictionary". */
   dictionary: string[]
-  /** Show the word count in the page bar. */
+  /** Show the word / character count in the status bar. */
   wordCount: boolean
   /** Default font for page text ('' = the app's standard font). */
   editorFont: string
@@ -34,6 +34,8 @@ export interface Settings {
   editorFontSize: number
   /** How long after you stop typing a page is saved, in ms. */
   autosaveDelay: number
+  /** Zoom of the page area (status bar slider), 1 = 100%. */
+  pageZoom: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -48,7 +50,8 @@ export const DEFAULT_SETTINGS: Settings = {
   wordCount: true,
   editorFont: '',
   editorFontSize: 16,
-  autosaveDelay: 600
+  autosaveDelay: 600,
+  pageZoom: 1
 }
 
 let current: Settings = { ...DEFAULT_SETTINGS, ...load<Partial<Settings>>('jn.settings', {}) }

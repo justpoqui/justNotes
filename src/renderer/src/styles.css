@@ -512,7 +512,6 @@ button.danger-fill { background: var(--danger); border-color: var(--danger); col
 .find-opt.on { background: var(--selected); color: var(--accent); }
 .find-toggle-space { width: 26px; }
 .find-row > button:not(.find-opt):not(.find-nav):not(.find-toggle) { font-size: 12.5px; padding: 3px 10px; }
-.word-count { font-size: 12px; color: var(--muted); white-space: nowrap; padding: 2px 4px; cursor: default; }
 .status-slot { align-items: center; gap: 6px; }
 
 /* ---------- ribbon: two-row groups ---------- */
@@ -559,3 +558,26 @@ kbd { font: 12px ui-monospace, monospace; padding: 1px 5px; border: 1px solid va
 .set-list .grow { flex: 1; }
 .arrow { color: var(--muted); }
 .set-empty { color: var(--muted); font-style: italic; font-size: 13px; }
+
+/* ---------- status bar (bottom of the window) ---------- */
+.statusbar {
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  height: 30px; padding: 0 8px 0 14px; font-size: 12px; color: var(--muted);
+  background: var(--ribbon-bg); border-top: 1px solid var(--border); user-select: none;
+}
+.sb-counts { display: flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; overflow: hidden; }
+.sb-dot { opacity: 0.6; }
+.sb-right { display: flex; align-items: center; gap: 2px; }
+.sb-btn {
+  display: grid; place-items: center; width: 26px; height: 22px; padding: 0; border: none; border-radius: 4px;
+  color: var(--muted); font-size: 15px; line-height: 1;
+}
+.sb-btn svg { width: 15px; height: 15px; }
+.sb-btn:hover:not(:disabled) { color: var(--fg); }
+.sb-btn:disabled, .sb-pct:disabled { opacity: 0.35; cursor: default; }
+.sb-sep { width: 1px; height: 16px; background: var(--border); margin: 0 8px; }
+.sb-zoom { display: flex; align-items: center; gap: 2px; }
+.sb-slider { width: 110px; accent-color: var(--accent); }
+.sb-slider:disabled { opacity: 0.35; }
+.sb-pct { border: none; padding: 2px 6px; min-width: 46px; font-size: 12px; color: var(--muted); border-radius: 4px; }
+.sb-pct:hover:not(:disabled) { color: var(--fg); }

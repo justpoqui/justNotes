@@ -419,10 +419,10 @@ export function Ribbon(props: Props) {
               <Btn icon={Ic.Moon} label="Dark" active={props.theme === 'dark'} onClick={() => props.setTheme('dark')} />
               <Btn icon={Ic.Sun} label="Light" active={props.theme === 'light'} onClick={() => props.setTheme('light')} />
             </Group>
-            <Group label={`Zoom · ${Math.round(props.zoom * 100)}%`}>
-              <Btn icon={Ic.ZoomOut} label="Smaller" title="Zoom out (Ctrl+-)" onClick={() => props.onZoom('out')} />
+            <Group label={`App size · ${Math.round(props.zoom * 100)}%`}>
+              <Btn icon={Ic.ZoomOut} label="Smaller" title="Make the whole app smaller (Ctrl+-). Page zoom is in the bar at the bottom." onClick={() => props.onZoom('out')} />
               <Btn icon={Ic.ZoomReset} label="100%" title="Reset zoom (Ctrl+0)" onClick={() => props.onZoom('reset')} />
-              <Btn icon={Ic.ZoomIn} label="Bigger" title="Zoom in (Ctrl+=)" onClick={() => props.onZoom('in')} />
+              <Btn icon={Ic.ZoomIn} label="Bigger" title="Make the whole app bigger (Ctrl+=). Page zoom is in the bar at the bottom." onClick={() => props.onZoom('in')} />
             </Group>
             <Group label="Files">
               <Btn icon={Ic.Folder} label="All notebooks folder" onClick={props.openRootFolder} wide />
