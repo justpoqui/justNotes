@@ -45,6 +45,8 @@ interface Props {
   isFavorite: boolean
   toggleFavorite(): void
   openPage(key: string): void
+  /** Opens Quick open (Ctrl+P). */
+  onQuickOpen(): void
 }
 
 const TABS = ['File', 'Home', 'Insert', 'Draw', 'View'] as const
@@ -534,6 +536,7 @@ export function Ribbon(props: Props) {
               <Btn icon={Ic.Sun} label="Light" active={props.theme === 'light'} onClick={() => props.setTheme('light')} />
             </Group>
             <Group label="Go to">
+              <Btn icon={Ic.Find} label="Go to page" wide title="Find any page or section by name (Ctrl+P)" onClick={props.onQuickOpen} />
               <PageList label="Recent" icon={Ic.Clock} empty="No recent pages yet." pages={props.recent} openPage={props.openPage} />
               <PageList label="Favorites" icon={Ic.Star} empty={'No favorites yet. Use "Add to Favorites" on a page.'} pages={props.favorites} openPage={props.openPage} />
             </Group>

@@ -40,6 +40,7 @@ Your notes stay readable without the app: open any `.md` file in a text editor o
 - **New pages:** **Ctrl+N** for a blank page, or **Insert → From template** for meeting notes, daily journal, to-do list, project plan or study notes.
 - **Recycle bin:** deleting moves things to **File → Recycle bin**, where they're kept for 30 days. A deleted page can also be brought back with **Undo** on the notice that appears.
 - **Page history:** while you edit, a copy of the page is kept every 10 minutes, and the last 50 copies are kept. Use **View → Page history** to preview and restore an earlier version, or to **Save a version now**.
+- **Go to any page: Ctrl+P** (or View → Go to page). Type part of a page or section name, from any notebook, and press Enter. Letters in order work too ("pln" finds "Planning"), and a second word can name the notebook or section ("home standup"). With nothing typed, it lists your recent pages.
 - **Recent and Favorite pages:** **View → Recent / Favorites**. **View → Add to Favorites** adds the open page.
 
 ### Writing

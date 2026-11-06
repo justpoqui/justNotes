@@ -10,6 +10,7 @@ import { HistoryDialog, ShortcutsDialog, TemplateDialog, TrashDialog } from './c
 import { MoveDialog } from './components/MoveDialog'
 import { NotebookDialog, type NotebookDialogMode } from './components/NotebookDialog'
 import { PageView } from './components/PageView'
+import { QuickOpen } from './components/QuickOpen'
 import { Ribbon, type PageMode } from './components/Ribbon'
 import { nextSectionColor, SECTION_COLORS, SectionTabs } from './components/SectionTabs'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -57,6 +58,7 @@ export function App() {
   const [trashOpen, setTrashOpen] = useState(false)
   const [historyFor, setHistoryFor] = useState<string | null>(null) // page key
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [quickOpen, setQuickOpen] = useState(false)
   // Recently opened and favorite pages (keys), remembered between runs.
   const [recent, setRecent] = useState<string[]>(() => load('jn.recent', []))
   const [favorites, setFavorites] = useState<string[]>(() => load('jn.favourites', []))
@@ -214,6 +216,11 @@ export function App() {
       return setShortcutsOpen(true)
     }
     if (!ctrl || e.altKey) return
+    // Ctrl+P: go to any page or section by typing part of its name.
+    if (e.key.toLowerCase() === 'p' && !e.shiftKey && !dialogOpen) {
+      e.preventDefault()
+      return setQuickOpen(true)
+    }
     if (e.key === ',') {
       e.preventDefault()
       return setSettingsOpen(true)
@@ -657,6 +664,7 @@ export function App() {
         isFavorite={!!selectedKey && favorites.includes(selectedKey)}
         toggleFavorite={() => selectedKind === 'page' && selectedKey && toggleFavorite(selectedKey)}
         openPage={openPage}
+        onQuickOpen={() => setQuickOpen(true)}
       />
       <SectionTabs
         notebook={notebook}
@@ -741,6 +749,14 @@ export function App() {
         />
       )}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {quickOpen && tree && (
+        <QuickOpen
+          tree={tree}
+          recent={recent.filter((k) => k !== selectedKey)}
+          open={(key) => (kindOf(key) === 'page' ? openPage(key) : selectSection(key))}
+          onClose={() => setQuickOpen(false)}
+        />
+      )}
       {info && !toast && (
         <div className="toast info" role="status">
           <span>{info.text}</span>

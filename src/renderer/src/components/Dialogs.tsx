@@ -283,7 +283,7 @@ export function HistoryDialog({ notebook, section, page, beforeRestore, notify, 
 // ---------------------------------------------------------------- keyboard shortcuts
 
 const SHORTCUTS: [string, [string, string][]][] = [
-  ['Pages & sections', [['Ctrl+N', 'New page'], ['Alt+↑ / Alt+↓ (in File › Open)', 'Move a notebook up / down'], ['Ctrl+Shift+N', 'New section'], ['Ctrl+Page Down / Up', 'Next / previous page'], ['Ctrl+Tab / Ctrl+Shift+Tab', 'Next / previous section'], ['F2', 'Rename the selected page'], ['Delete', 'Delete the selected page (in the page list)'], ['Alt+↑ / Alt+↓', 'Move the selected page up / down']]],
+  ['Pages & sections', [['Ctrl+P', 'Go to a page or section by name'], ['Ctrl+N', 'New page'], ['Alt+↑ / Alt+↓ (in File › Open)', 'Move a notebook up / down'], ['Ctrl+Shift+N', 'New section'], ['Ctrl+Page Down / Up', 'Next / previous page'], ['Ctrl+Tab / Ctrl+Shift+Tab', 'Next / previous section'], ['F2', 'Rename the selected page'], ['Delete', 'Delete the selected page (in the page list)'], ['Alt+↑ / Alt+↓', 'Move the selected page up / down']]],
   ['Writing', [['Ctrl+B / I / U', 'Bold / italic / underline'], ['Ctrl+Shift+S', 'Strikethrough'], ['Ctrl+E', 'Inline code'], ['Ctrl+Shift+H', 'Highlight'], ['Ctrl+Shift+L / E / R / J', 'Align left / center / right / justify'], ['/', 'Block menu (headings, lists, tables…)'], ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo (Ctrl+Z right after an automatic correction undoes just that)']]],
   ['Find & view', [['Ctrl+F', 'Find in page'], ['Ctrl+H', 'Find and replace'], ['Ctrl+= / Ctrl+− / Ctrl+0', 'Zoom the page in / out / 100%'], ['Ctrl+mouse wheel', 'Zoom the page']]],
   ['App', [['Ctrl+S', 'Save now (pages also save by themselves)'], ['Ctrl+,', 'Settings'], ['F1 or Ctrl+/', 'This list']]]
