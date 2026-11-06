@@ -382,7 +382,7 @@ body.resizing-img { cursor: nwse-resize; user-select: none; }
 .rb-style.active { border-color: var(--accent); background: var(--selected); }
 .rb-pop-wrap { position: relative; }
 .rb-pop {
-  position: absolute; top: 100%; left: 0; z-index: 30; display: flex; gap: 6px; padding: 8px; margin-top: 4px;
+  position: fixed; z-index: 30; display: flex; gap: 6px; padding: 8px;
   background: var(--menu-bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow);
 }
 .rb-pop input {
@@ -476,7 +476,7 @@ body.resizing-img { cursor: nwse-resize; user-select: none; }
 .swatch-bar { width: 22px; height: 3px; border-radius: 1px; margin-top: 2px; }
 .rb-swatch-btn.active { background: var(--selected); }
 .rb-palette {
-  position: absolute; top: 100%; left: 0; z-index: 30; margin-top: 4px; padding: 8px; width: 170px;
+  position: fixed; z-index: 30; padding: 8px; width: 170px;
   background: var(--menu-bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow);
 }
 .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
@@ -571,6 +571,10 @@ kbd { font: 12px ui-monospace, monospace; padding: 1px 5px; border: 1px solid va
 .segmented button.selected { background: var(--selected); font-weight: 600; }
 .set-path { display: flex; align-items: center; gap: 10px; }
 .set-path code { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 5px 8px; }
+.set-path + .set-backup-now { margin-top: 10px; }
+.set-backup-now { display: flex; align-items: center; gap: 12px; }
+.set-backup-now .set-hint { margin: 0; }
+.set-error { color: var(--danger) !important; }
 .set-add { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
 .set-add .dialog-input { flex: 1; }
 .set-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; max-height: 220px; overflow-y: auto; }

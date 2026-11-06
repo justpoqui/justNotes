@@ -2,6 +2,7 @@
 // reports state; the menu itself is drawn by React (SlashMenu in PageEditor).
 
 import { Extension, type Editor, type Range } from '@tiptap/core'
+import { insertDate } from './dateTime'
 import { PluginKey } from '@tiptap/pm/state'
 import Suggestion, { exitSuggestion } from '@tiptap/suggestion'
 
@@ -99,11 +100,13 @@ export function slashItems(pickImage: () => Promise<string | null>): SlashItem[]
     block('code', 'Code block', 'Code with syntax highlighting', ['```', 'snippet', 'pre'], (e) => e.chain().focus().toggleCodeBlock().run()),
     block('divider', 'Divider', 'Horizontal line', ['hr', 'rule', 'separator', '---'], (e) => e.chain().focus().setHorizontalRule().run()),
     block('table', 'Table', '3 × 3 table', ['grid'], (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()),
+    block('date', 'Date', "Today's date (Alt+Shift+D)", ['today', 'day', 'now'], (e) => insertDate(e, 'long')),
+    block('time', 'Time', 'The time now (Alt+Shift+T)', ['clock', 'now'], (e) => insertDate(e, 'time')),
     {
       id: 'image',
-      title: 'Image',
+      title: 'Picture',
       hint: 'Insert a picture from your computer',
-      keywords: ['picture', 'photo', 'img'],
+      keywords: ['image', 'photo', 'img'],
       run: (editor, range) => {
         editor.chain().focus().deleteRange(range).run()
         void pickImage().then((src) => {

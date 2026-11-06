@@ -203,18 +203,24 @@ export function createExtensions({ resolveImageSrc = (s) => s, placeholder, extr
       const { width, textAlign, ...rest } = HTMLAttributes as Record<string, unknown>
       return ['img', { ...rest, src: resolveImageSrc(String(rest.src ?? '')), ...(width ? { width } : {}), ...(textAlign ? { 'data-align': textAlign } : {}) }]
     },
-    // Chrome sometimes keeps a selected picture selected when you then click into text
-    // (ProseMirror notes this quirk), and typing would replace the picture. A click
-    // outside the selected picture always moves the cursor there.
+    // A plain click always puts the cursor where you clicked. ProseMirror normally leaves this
+    // to the browser, and Chrome can lose it: a picture that was selected stays selected (so
+    // typing replaces it), or, on a slow machine, the cursor jumps back to where it was when
+    // the editor receives focus. Clicks on pictures, checkboxes and links are left alone.
     addProseMirrorPlugins() {
       return [
         new Plugin({
           props: {
             handleClick(view, pos, event) {
+              if (event.button !== 0 || event.detail > 1 || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return false
+              const target = event.target as HTMLElement | null
+              if (target?.closest('.img-block, img, input, label, a, [data-drag-handle]')) return false
               const sel = view.state.selection
-              if (!(sel instanceof NodeSelection) || event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return false
-              if (pos >= sel.from && pos <= sel.to) return false
-              view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos))))
+              const $pos = view.state.doc.resolve(pos)
+              if (!$pos.parent.inlineContent) return false
+              if (sel.empty && sel.from === pos) return false
+              if (!(sel instanceof NodeSelection) && !sel.empty) return false // a drag-selection: keep it
+              view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)))
               return true
             }
           }

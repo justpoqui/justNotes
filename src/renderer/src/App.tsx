@@ -21,6 +21,7 @@ import { getSettings, updateSettings, useSettings } from './lib/settings'
 import { getActivePage } from './editor/activePage'
 import { ZOOM_MAX, ZOOM_MIN } from './components/StatusBar'
 import { load, save } from './lib/storage'
+import { startAutoBackup } from './lib/autoBackup'
 import { WELCOME_NOTEBOOK, WELCOME_PAGE, WELCOME_SECTION, WELCOME_TEXT } from './lib/welcome'
 import { existsIn, isWithin, kindOf, nameOf, nearestExisting, parentOf, refOf, remapKey } from './lib/tree'
 
@@ -266,6 +267,9 @@ export function App() {
       window.removeEventListener('wheel', onWheel)
     }
   }, [])
+
+  // Automatic backups (Settings ▸ General ▸ Backups).
+  useEffect(() => startAutoBackup((msg) => setToast(msg)), [])
 
   // Unsaved edits are written before the window closes.
   useEffect(() => api.onBeforeClose(flushAllSaves), [])
@@ -598,7 +602,7 @@ export function App() {
     if (check(r) && r.data) setInfo(`Backed up "${nbName}" to ${r.data}`)
   }
   const restoreBackup = async () => {
-    const r = await api.importNotebook()
+    const r = await api.importNotebook(getSettings().backupFolder || (await api.defaultBackupFolder().then((d) => (d.ok ? d.data : ''))))
     if (!check(r) || !r.data) return
     const t = await refresh()
     if (t) setSelectedKey(landing(t, r.data))

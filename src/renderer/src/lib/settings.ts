@@ -44,6 +44,14 @@ export interface Settings {
   spellLanguage: 'en-US' | 'en-GB'
   /** Page text column: normal (easy reading) or wide. */
   pageWidth: 'normal' | 'wide'
+  /** Automatic backups of every notebook. */
+  autoBackup: 'off' | 'daily' | 'weekly'
+  /** Folder for automatic backups ('' = ~/Documents/justNotes Backups). */
+  backupFolder: string
+  /** How many backups (days) to keep. */
+  backupKeep: number
+  /** When the last automatic backup was made (ISO time, '' = never). */
+  lastBackup: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -63,7 +71,11 @@ export const DEFAULT_SETTINGS: Settings = {
   pageZoom: 1,
   appZoom: 1,
   spellLanguage: 'en-US',
-  pageWidth: 'normal'
+  pageWidth: 'normal',
+  autoBackup: 'daily',
+  backupFolder: '',
+  backupKeep: 10,
+  lastBackup: ''
 }
 
 let current: Settings = { ...DEFAULT_SETTINGS, ...load<Partial<Settings>>('jn.settings', {}) }

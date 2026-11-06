@@ -5,6 +5,7 @@ import { NodeSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import React, { useEffect, useRef, useState } from 'react'
 import { useActivePage, type BoardControls } from '../editor/activePage'
+import { dateFormats, insertDate } from '../editor/dateTime'
 import { updateSettings, useSettings } from '../lib/settings'
 import { load, save } from '../lib/storage'
 import * as Ic from './RibbonIcons'
@@ -425,6 +426,7 @@ export function Ribbon(props: Props) {
               <Btn icon={Ic.Code} label="Code" disabled={!ed} active={is('codeBlock')} onClick={() => chain().toggleCodeBlock().run()} />
               <Btn icon={Ic.Divider} label="Divider" disabled={!ed} onClick={() => chainAtEnd().setHorizontalRule().run()} />
               <LinkButton editor={ed} />
+              <DateButton editor={ed} />
             </Group>
           </>
         )}
@@ -559,6 +561,16 @@ export function Ribbon(props: Props) {
   )
 }
 
+/**
+ * Where a drop-down opens: just under its button, in window coordinates. (The ribbon panel
+ * scrolls sideways on narrow windows, which would cut off a drop-down positioned inside it.)
+ */
+function popAt(wrap: HTMLElement | null, width = 300): React.CSSProperties {
+  if (!wrap) return {}
+  const r = wrap.getBoundingClientRect()
+  return { top: r.bottom + 4, left: Math.max(4, Math.min(r.left, window.innerWidth - width - 8)) }
+}
+
 /** Whether the table around the cursor starts with a header row. */
 function tableHasHeader(editor: Editor): boolean {
   const { $from } = editor.state.selection
@@ -624,7 +636,7 @@ function PageList({ label, icon, empty, pages, openPage }: { label: string; icon
     <div className="rb-pop-wrap" ref={wrap}>
       <Btn icon={icon} label={`${label} ▾`} active={open} onClick={() => setOpen((o) => !o)} />
       {open && (
-        <div className="rb-pop page-list" role="menu" aria-label={label}>
+        <div className="rb-pop page-list" role="menu" aria-label={label} style={popAt(wrap.current, 280)}>
           {pages.length === 0 ? (
             <p className="muted small">{empty}</p>
           ) : (
@@ -709,7 +721,7 @@ function Swatches({
         ▾
       </button>
       {open && (
-        <div className="rb-palette" role="menu" aria-label={label}>
+        <div className="rb-palette" role="menu" aria-label={label} style={popAt(wrap.current, 170)}>
           <div className="palette-grid">
             {colors.map((c) => (
               <button
@@ -727,6 +739,49 @@ function Swatches({
           <button className="palette-default" role="menuitem" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)}>
             {defaultLabel}
           </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Insert ▸ Date & time: pick a format from a drop-down (Alt+Shift+D / Alt+Shift+T insert date / time). */
+function DateButton({ editor }: { editor: Editor | null }) {
+  const [open, setOpen] = useState(false)
+  const wrap = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => !wrap.current?.contains(e.target as Node) && setOpen(false)
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    window.addEventListener('mousedown', close)
+    window.addEventListener('keydown', esc)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('keydown', esc)
+    }
+  }, [open])
+  return (
+    <div className="rb-pop-wrap" ref={wrap}>
+      <Btn icon={Ic.Clock} label="Date & time ▾" wide disabled={!editor} title="Insert today's date or the time (Alt+Shift+D / Alt+Shift+T)" active={open} onClick={() => setOpen((o) => !o)} />
+      {open && editor && (
+        <div className="rb-pop page-list date-list" role="menu" aria-label="Date and time" style={popAt(wrap.current, 280)}>
+          {dateFormats().map((d) => (
+            <button
+              key={d.id}
+              role="menuitem"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setOpen(false)
+                insertDate(editor, d.id)
+              }}
+            >
+              <span className="pl-name">{d.text}</span>
+              <span className="muted small">
+                {d.label}
+                {d.id === 'long' ? ' · Alt+Shift+D' : d.id === 'time' ? ' · Alt+Shift+T' : ''}
+              </span>
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -772,6 +827,7 @@ function LinkButton({ editor }: { editor: Editor | null }) {
       {open && (
         <form
           className="rb-pop"
+          style={popAt(wrap.current, 340)}
           onSubmit={(e) => {
             e.preventDefault()
             apply()

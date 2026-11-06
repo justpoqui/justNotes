@@ -9,6 +9,7 @@ import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { EngineFailure, FileEngine, IMAGE_EXTS } from './fileEngine'
 import { exportPdf } from './printing'
+import { checkBackupDir, DEFAULT_BACKUP_DIR, runBackup } from './autoBackup'
 import type { Result } from '../shared/types'
 
 async function wrap<T>(fn: () => Promise<T> | T): Promise<Result<T>> {
@@ -87,9 +88,11 @@ export function registerIpc(engine: FileEngine): void {
       await fs.writeFile(r.filePath, await engine.exportNotebook(name))
       return r.filePath
     },
-    importNotebook: async () => {
+    importNotebook: async (fromFolder) => {
       const win = BrowserWindow.getFocusedWindow()
-      const opts = { title: 'Restore a notebook backup', properties: ['openFile' as const], filters: [{ name: 'Zip', extensions: ['zip'] }] }
+      let defaultPath: string | undefined
+      if (typeof fromFolder === 'string' && fromFolder) defaultPath = await fs.stat(fromFolder).then((s) => (s.isDirectory() ? fromFolder : undefined), () => undefined)
+      const opts = { title: 'Restore a notebook backup', defaultPath, properties: ['openFile' as const], filters: [{ name: 'Zip', extensions: ['zip'] }] }
       const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
       if (r.canceled || !r.filePaths[0]) return null
       const file = r.filePaths[0]
@@ -97,6 +100,22 @@ export function registerIpc(engine: FileEngine): void {
       if (st.size > 500 * 1024 * 1024) throw new EngineFailure('IO_ERROR', 'That backup is too large (over 500 MB).')
       const base = path.basename(file, path.extname(file)).replace(/ \(justNotes backup\)$/, '')
       return engine.importNotebook(new Uint8Array(await fs.readFile(file)), base)
+    },
+    runAutoBackup: (folder, keep) => runBackup(engine, folder, keep),
+    chooseBackupFolder: async (current) => {
+      const win = BrowserWindow.getFocusedWindow()
+      const start = typeof current === 'string' && current ? current : DEFAULT_BACKUP_DIR
+      const opts = { title: 'Folder for automatic backups', defaultPath: start, properties: ['openDirectory' as const, 'createDirectory' as const] }
+      const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      if (r.canceled || !r.filePaths[0]) return null
+      return checkBackupDir(r.filePaths[0], engine.root)
+    },
+    defaultBackupFolder: () => DEFAULT_BACKUP_DIR,
+    openBackupFolder: async (folder) => {
+      const dir = checkBackupDir(folder, engine.root)
+      await fs.mkdir(dir, { recursive: true })
+      const err = await shell.openPath(dir)
+      if (err) throw new EngineFailure('IO_ERROR', `Could not open the folder: ${err}`)
     },
     movePage: (nb, sec, name, toNb, toSec) => engine.movePage(nb, sec, name, toNb, toSec),
     readPage: (nb, sec, name) => engine.readPage(nb, sec, name),

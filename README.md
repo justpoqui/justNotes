@@ -38,6 +38,7 @@ Your notes stay readable without the app: open any `.md` file in a text editor o
   - Right-click a page for **Duplicate**, **Move…**, **Page history…**, **Add to Favorites** and more.
   - The heading at the top of a page is its name: change it, click elsewhere, and the page (and its file) is renamed to match.
 - **New pages:** **Ctrl+N** for a blank page, or **Insert → From template** for meeting notes, daily journal, to-do list, project plan or study notes.
+- **Automatic backups:** every day (or week), each notebook is saved as a `.zip` in `~/Documents/justNotes Backups/justNotes backup <date>/`, keeping the last 10. Change how often, how many and where in **Settings → General → Backups** (there's also **Back up now**). Bring one back with **File → Restore backup**, which opens in that folder.
 - **Recycle bin:** deleting moves things to **File → Recycle bin**, where they're kept for 30 days. A deleted page can also be brought back with **Undo** on the notice that appears.
 - **Page history:** while you edit, a copy of the page is kept every 10 minutes, and the last 50 copies are kept. Use **View → Page history** to preview and restore an earlier version, or to **Save a version now**.
 - **Go to any page: Ctrl+P** (or View → Go to page). Type part of a page or section name, from any notebook, and press Enter. Letters in order work too ("pln" finds "Planning"), and a second word can name the notebook or section ("home standup"). With nothing typed, it lists your recent pages.
@@ -49,6 +50,7 @@ Your notes stay readable without the app: open any `.md` file in a text editor o
 - **Home tab:**
   - font, size, bold/italic/underline/strike, text color, highlight
   - lists, indent, alignment, styles, **Find & Replace**
+- **Date & time:** **Insert → Date & time** (several formats), `/date` and `/time`, or **Alt+Shift+D** / **Alt+Shift+T**.
 - **Selecting text** shows a small toolbar with the most-used formatting.
 - **Pictures:** paste, drag in, or use Insert → Picture. They're stored in the section's `assets/` folder.
   - Click a picture to show the **Picture** tab (Small / Medium / Large / Original size, Left / Center / Right), or drag the handle at its corner to resize it.

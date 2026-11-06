@@ -12,6 +12,7 @@ import { findUnsupported, splitFrontMatter } from '../editor/preserve'
 import { clearActivePage, setActivePage } from '../editor/activePage'
 import { registerFlusher } from '../editor/saveCoordinator'
 import { Search } from '../editor/Search'
+import { DateTime } from '../editor/dateTime'
 import { getSettings, updateSettings } from '../lib/settings'
 import { ignoreWord, Proofing, refreshSpelling, WordUndo } from '../proofing/Proofing'
 import { getSpellChecker } from '../proofing/spellchecker'
@@ -186,6 +187,7 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot, onT
       extra: [
         Proofing,
         WordUndo,
+        DateTime,
         Search,
         SlashCommand.configure({
           items: (q) => filterSlashItems(items, q),

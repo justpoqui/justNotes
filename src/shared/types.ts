@@ -121,7 +121,15 @@ export interface WikiApi {
   /** Saves the notebook as a .zip (save dialog). Resolves to the path, or null if cancelled. */
   exportNotebook(notebook: string): Promise<Result<string | null>>
   /** Adds a notebook from a .zip backup (open dialog). Resolves to its name, or null if cancelled. */
-  importNotebook(): Promise<Result<string | null>>
+  /** `fromFolder`: where the file picker starts (e.g. the automatic backups folder). */
+  importNotebook(fromFolder?: string): Promise<Result<string | null>>
+  /** Backs up every notebook into a dated folder inside `folder` ('' = the default), keeping the newest `keep`. */
+  runAutoBackup(folder: string, keep: number): Promise<Result<{ folder: string; notebooks: number }>>
+  /** Lets the user pick a folder for automatic backups (null if cancelled). */
+  chooseBackupFolder(current: string): Promise<Result<string | null>>
+  /** The folder used when none was chosen. */
+  defaultBackupFolder(): Promise<Result<string>>
+  openBackupFolder(folder: string): Promise<Result<void>>
 
   /** Moves a page (with its whiteboard and images) to another section. Resolves to its name. */
   movePage(notebook: string, section: string, name: string, toNotebook: string, toSection: string): Promise<Result<string>>

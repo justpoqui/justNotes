@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { DEFAULT_SETTINGS, updateSettings, useSettings } from '../lib/settings'
 import { COMMON_TYPOS } from '../proofing/typos'
+import { backupNow } from '../lib/autoBackup'
 
 const TABS = ['General', 'Proofing', 'AutoCorrect', 'Dictionary'] as const
 type Tab = (typeof TABS)[number]
@@ -32,12 +33,15 @@ export function SettingsDialog({ onClose }: Props) {
   const [to, setTo] = useState('')
   const [newWord, setNewWord] = useState('')
   const [filter, setFilter] = useState('')
+  const [defaultBackupDir, setDefaultBackupDir] = useState('')
+  const [backupState, setBackupState] = useState<{ busy: boolean; message: string | null; error: boolean }>({ busy: false, message: null, error: false })
   const dialogRef = useRef<HTMLDivElement>(null)
   useEffect(() => dialogRef.current?.focus(), []) // so Esc works straight away
 
   useEffect(() => {
     void window.wiki.listFonts().then((r) => r.ok && setFonts(r.data))
     void window.wiki.getRoot().then((r) => r.ok && setRoot(r.data))
+    void window.wiki.defaultBackupFolder().then((r) => r.ok && setDefaultBackupDir(r.data))
   }, [])
 
   const addReplacement = () => {
@@ -130,6 +134,57 @@ export function SettingsDialog({ onClose }: Props) {
                   </select>
                 </div>
                 <p className="set-hint">Pages are also saved when you switch pages, close the app, or press Ctrl+S.</p>
+
+                <h3>Backups</h3>
+                <div className="set-row">
+                  <span className="set-label">
+                    Back up automatically
+                    <span className="set-hint">Every notebook is saved as a .zip in a dated folder. Bring one back with File ▸ Restore backup.</span>
+                  </span>
+                  <select className="dialog-input" value={s.autoBackup} onChange={(e) => updateSettings({ autoBackup: e.target.value as 'off' | 'daily' | 'weekly' })}>
+                    <option value="daily">Every day</option>
+                    <option value="weekly">Every week</option>
+                    <option value="off">Off</option>
+                  </select>
+                </div>
+                <div className="set-row">
+                  <span className="set-label">Keep the last</span>
+                  <select className="dialog-input" value={s.backupKeep} disabled={s.autoBackup === 'off'} onChange={(e) => updateSettings({ backupKeep: Number(e.target.value) })}>
+                    {[5, 10, 20, 30, 60].map((n) => (
+                      <option key={n} value={n}>
+                        {n} backups{n === 10 ? ' (default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="set-path">
+                  <code>{s.backupFolder || defaultBackupDir}</code>
+                  <button
+                    onClick={async () => {
+                      const r = await window.wiki.chooseBackupFolder(s.backupFolder || defaultBackupDir)
+                      if (!r.ok) return setBackupState({ busy: false, message: r.error.message, error: true })
+                      if (r.data) updateSettings({ backupFolder: r.data === defaultBackupDir ? '' : r.data })
+                    }}
+                  >
+                    Change…
+                  </button>
+                  <button onClick={() => void window.wiki.openBackupFolder(s.backupFolder)}>Open folder</button>
+                </div>
+                <div className="set-backup-now">
+                  <button
+                    disabled={backupState.busy}
+                    onClick={async () => {
+                      setBackupState({ busy: true, message: null, error: false })
+                      const err = await backupNow()
+                      setBackupState({ busy: false, message: err ?? 'Backed up just now.', error: !!err })
+                    }}
+                  >
+                    {backupState.busy ? 'Backing up…' : 'Back up now'}
+                  </button>
+                  <span className={`set-hint${backupState.error ? ' set-error' : ''}`}>
+                    {backupState.message ?? (s.lastBackup ? `Last backup: ${new Date(s.lastBackup).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : 'No backup yet.')}
+                  </span>
+                </div>
 
                 <h3>Where your notes are</h3>
                 <div className="set-path">
