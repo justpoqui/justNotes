@@ -1,9 +1,11 @@
 // Office-style ribbon across the top: tabs (Home, Insert, Draw, View) with
 // grouped buttons that act on the open page or whiteboard.
 
+import { NodeSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import React, { useEffect, useRef, useState } from 'react'
 import { useActivePage, type BoardControls } from '../editor/activePage'
+import { updateSettings, useSettings } from '../lib/settings'
 import { load, save } from '../lib/storage'
 import * as Ic from './RibbonIcons'
 import logo from '../assets/logo.png'
@@ -27,7 +29,6 @@ interface Props {
   revealPage(): void
   onOpenNotebook(): void
   onRenameNotebook(): void
-  onDeleteNotebook(): void
   onRevealNotebook(): void
   onOpenSettings(): void
   onShortcuts(): void
@@ -35,21 +36,22 @@ interface Props {
   onRestoreBackup(): void
   onTrash(): void
   onHistory(): void
-  onDuplicate(): void
   onTemplate(): void
   /** Adds a picture of the whiteboard to the page. */
   onSnapshot(): void
-  /** Recently opened / favourite pages (keys "Notebook/Section/Page"). */
+  /** Recently opened / favorite pages (keys "Notebook/Section/Page"). */
   recent: string[]
-  favourites: string[]
-  isFavourite: boolean
-  toggleFavourite(): void
+  favorites: string[]
+  isFavorite: boolean
+  toggleFavorite(): void
   openPage(key: string): void
 }
 
 const TABS = ['File', 'Home', 'Insert', 'Draw', 'View'] as const
+/** Extra tabs that appear only while the cursor is in a table / a picture is selected (like Office). */
+const CONTEXT_TABS = ['Table', 'Picture'] as const
 
-// Text colours chosen to stay readable on both the dark and the light theme.
+// Text colors chosen to stay readable on both the dark and the light theme.
 const TEXT_COLORS = [
   ['Red', '#e06c75'],
   ['Orange', '#e0904f'],
@@ -59,7 +61,7 @@ const TEXT_COLORS = [
   ['Blue', '#4f8fe6'],
   ['Purple', '#a274d9'],
   ['Pink', '#d16fa5'],
-  ['Grey', '#8e9095']
+  ['Gray', '#8e9095']
 ] as const
 // null = the default yellow highlight (saved as ==text==).
 const HIGHLIGHTS = [
@@ -72,7 +74,7 @@ const HIGHLIGHTS = [
 ] as const
 const GENERIC_FONTS = ['sans-serif', 'serif', 'monospace']
 const FONT_SIZES = ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '40px']
-type Tab = (typeof TABS)[number]
+type Tab = (typeof TABS)[number] | (typeof CONTEXT_TABS)[number]
 
 /** Re-render whenever the editor's content or selection changes (for active button states). */
 function useEditorTick(editor: Editor | null) {
@@ -151,8 +153,12 @@ function Group({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function Ribbon(props: Props) {
-  const [tab, setTab] = useState<Tab>(() => load<Tab>('jn.ribbonTab', 'Home'))
-  useEffect(() => save('jn.ribbonTab', tab), [tab])
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = load<Tab>('jn.ribbonTab', 'Home')
+    return (TABS as readonly string[]).includes(t) ? t : 'Home'
+  })
+  useEffect(() => save('jn.ribbonTab', (TABS as readonly string[]).includes(tab) ? tab : 'Home'), [tab])
+  const settings = useSettings()
   const { editor, board, insertImage, openFind, exportPdf } = useActivePage()
   const [fonts, setFonts] = useState<string[]>([])
   useEffect(() => {
@@ -180,6 +186,22 @@ export function Ribbon(props: Props) {
   // Inserting a block never replaces selected text: it goes after the selection.
   const chainAtEnd = () => chain().setTextSelection(ed!.state.selection.to)
 
+  // Table / Picture tabs show while they apply; a vanished one falls back to Home.
+  const inTable = is('table')
+  const onPicture = !!ed && ed.state.selection instanceof NodeSelection && ed.state.selection.node.type.name === 'image'
+  const contextTabs = CONTEXT_TABS.filter((t) => (t === 'Table' ? inTable : onPicture))
+  const shownTab: Tab = (CONTEXT_TABS as readonly string[]).includes(tab) && !contextTabs.includes(tab as (typeof CONTEXT_TABS)[number]) ? 'Home' : tab
+  // Opening the whiteboard brings up the Draw tab; going back to the page brings back Home.
+  const prevMode = useRef(props.mode)
+  useEffect(() => {
+    if (prevMode.current === props.mode) return
+    prevMode.current = props.mode
+    if (props.mode === 'board') setTab((t) => (t === 'Home' || t === 'Insert' || t === 'Table' || t === 'Picture' ? 'Draw' : t))
+    else setTab((t) => (t === 'Draw' ? 'Home' : t))
+  }, [props.mode])
+  const picture = onPicture ? ed!.getAttributes('image') : null
+  const setPicWidth = (w: number | null) => chain().updateAttributes('image', { width: w }).run()
+
   const pickTool = (tool: Tool) => {
     if (props.mode !== 'board' || !board) {
       pendingTool.current = tool
@@ -195,7 +217,20 @@ export function Ribbon(props: Props) {
           justNotes
         </span>
         {TABS.map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} className={`rb-tab${tab === t ? ' selected' : ''}`} onClick={() => setTab(t)}>
+          <button key={t} role="tab" aria-selected={shownTab === t} className={`rb-tab${shownTab === t ? ' selected' : ''}`} onClick={() => setTab(t)}>
+            {t}
+          </button>
+        ))}
+        {contextTabs.map((t) => (
+          <button
+            key={t}
+            role="tab"
+            aria-selected={shownTab === t}
+            className={`rb-tab contextual${shownTab === t ? ' selected' : ''}`}
+            title={t === 'Table' ? 'Rows, columns and other table tools' : 'Size and position of the selected picture'}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setTab(t)}
+          >
             {t}
           </button>
         ))}
@@ -203,29 +238,26 @@ export function Ribbon(props: Props) {
         <WindowButtons />
       </div>
 
-      <div className="rb-panel" role="tabpanel" aria-label={tab}>
-        {tab === 'File' && (
+      <div className="rb-panel" role="tabpanel" aria-label={shownTab}>
+        {shownTab === 'File' && (
           <>
             <Group label="Notebook">
-              <Btn icon={Ic.NewNotebook} label="New" title="New notebook" onClick={() => props.startCreate(null)} />
+              <Btn icon={Ic.NewNotebook} label="New notebook" wide onClick={() => props.startCreate(null)} />
               <Btn icon={Ic.Folder} label="Open" title="Open another notebook" onClick={props.onOpenNotebook} />
-              <Btn icon={Ic.Rename} label="Rename" title="Rename this notebook" disabled={!props.notebookKey} onClick={props.onRenameNotebook} />
-              <Btn icon={Ic.Trash} label="Delete" title="Move this notebook to the Recycle bin" disabled={!props.notebookKey} onClick={props.onDeleteNotebook} />
+              <Btn icon={Ic.Rename} label="Rename" title="Rename this notebook (to delete it, right-click the Notebook button)" disabled={!props.notebookKey} onClick={props.onRenameNotebook} />
             </Group>
             <Group label="Backup">
               <Btn icon={Ic.Backup} label="Back up" title="Save this notebook as a .zip file" disabled={!props.notebookKey} onClick={props.onBackup} />
-              <Btn icon={Ic.RestoreBackup} label="Restore" title="Add a notebook from a .zip backup" onClick={props.onRestoreBackup} />
+              <Btn icon={Ic.RestoreBackup} label="Restore backup" wide title="Add a notebook from a .zip backup" onClick={props.onRestoreBackup} />
               <Btn icon={Ic.Bin} label="Recycle bin" wide title="Deleted notebooks, sections and pages (kept 30 days)" onClick={props.onTrash} />
             </Group>
-            <Group label="Page">
-              <Btn icon={Ic.Pdf} label="Export PDF" wide disabled={!exportPdf || props.mode !== 'page'} title="Save the open page as a PDF" onClick={() => exportPdf?.()} />
-              <Btn icon={Ic.History} label="History" title="Earlier versions of this page" disabled={!props.hasPage} onClick={props.onHistory} />
-              <Btn icon={Ic.Duplicate} label="Duplicate" title="Make a copy of this page" disabled={!props.hasPage} onClick={props.onDuplicate} />
+            <Group label="Export">
+              <Btn icon={Ic.Pdf} label="Page as PDF" wide disabled={!exportPdf || props.mode !== 'page'} title="Save the open page as a PDF" onClick={() => exportPdf?.()} />
             </Group>
-            <Group label="Files">
-              <Btn icon={Ic.Reveal} label="Page file" title="Show this page's file in the file manager" disabled={!props.hasPage} onClick={props.revealPage} />
-              <Btn icon={Ic.Reveal} label="Notebook folder" wide title="Show this notebook's folder in the file manager" disabled={!props.notebookKey} onClick={props.onRevealNotebook} />
-              <Btn icon={Ic.Folder} label="All notebooks" wide title="Open the folder with all your notebooks" onClick={props.openRootFolder} />
+            <Group label="Show in file manager">
+              <Btn icon={Ic.FileReveal} label="This page" wide title="Show this page's file in the file manager" disabled={!props.hasPage} onClick={props.revealPage} />
+              <Btn icon={Ic.Reveal} label="This notebook" wide title="Show this notebook's folder in the file manager" disabled={!props.notebookKey} onClick={props.onRevealNotebook} />
+              <Btn icon={Ic.Folders} label="All notebooks" wide title="Open the folder with all your notebooks" onClick={props.openRootFolder} />
             </Group>
             <Group label="Options">
               <Btn icon={Ic.Gear} label="Settings" title="Settings (Ctrl+,)" onClick={props.onOpenSettings} />
@@ -234,7 +266,7 @@ export function Ribbon(props: Props) {
           </>
         )}
 
-        {tab === 'Home' && (
+        {shownTab === 'Home' && (
           <>
             <Group label="Font">
               <div className="rb-rows">
@@ -286,7 +318,7 @@ export function Ribbon(props: Props) {
                   <Mini label="S" cls="s" title="Strikethrough (Ctrl+Shift+S)" disabled={!ed} active={is('strike')} onClick={() => chain().toggleStrike().run()} />
                   <Mini label="</>" cls="code" title="Inline code (Ctrl+E)" disabled={!ed} active={is('code')} onClick={() => chain().toggleCode().run()} />
                   <Swatches
-                    label="Font colour"
+                    label="Font color"
                     letter="A"
                     disabled={!ed}
                     current={(ed?.getAttributes('textStyle').color as string | undefined) ?? null}
@@ -378,7 +410,7 @@ export function Ribbon(props: Props) {
           </>
         )}
 
-        {tab === 'Insert' && (
+        {shownTab === 'Insert' && (
           <>
             <Group label="Notebook">
               <Btn icon={Ic.NewPage} label="New page" disabled={!props.sectionKey} title={props.sectionKey ? 'New page in this section' : 'Select a section first'} onClick={() => props.startCreate(props.sectionKey)} />
@@ -395,7 +427,7 @@ export function Ribbon(props: Props) {
           </>
         )}
 
-        {tab === 'Draw' && (
+        {shownTab === 'Draw' && (
           <>
             <Group label="Tools">
               {(
@@ -407,7 +439,7 @@ export function Ribbon(props: Props) {
                   ['ellipse', 'Circle', Ic.Ellipse, 'O'],
                   ['arrow', 'Arrow', Ic.Arrow, 'A'],
                   ['text', 'Text', Ic.TextTool, 'T'],
-                  ['image', 'Image', Ic.ImageIcon, '9'],
+                  ['image', 'Picture', Ic.ImageIcon, '9'],
                   ['eraser', 'Eraser', Ic.Eraser, 'E']
                 ] as const
               ).map(([tool, label, icon, key]) => (
@@ -428,10 +460,74 @@ export function Ribbon(props: Props) {
           </>
         )}
 
-        {tab === 'View' && (
+        {shownTab === 'Table' && ed && (
+          <>
+            <Group label="Rows">
+              <Btn icon={Ic.RowAbove} label="Insert above" wide onClick={() => chain().addRowBefore().run()} />
+              <Btn icon={Ic.RowBelow} label="Insert below" wide onClick={() => chain().addRowAfter().run()} />
+              <Btn icon={Ic.DeleteRow} label="Delete row" wide disabled={!ed.can().deleteRow()} onClick={() => chain().deleteRow().run()} />
+            </Group>
+            <Group label="Columns">
+              <Btn icon={Ic.ColLeft} label="Insert left" wide onClick={() => chain().addColumnBefore().run()} />
+              <Btn icon={Ic.ColRight} label="Insert right" wide onClick={() => chain().addColumnAfter().run()} />
+              <Btn icon={Ic.DeleteCol} label="Delete column" wide disabled={!ed.can().deleteColumn()} onClick={() => chain().deleteColumn().run()} />
+            </Group>
+            <Group label="Table">
+              <Btn icon={Ic.HeaderRow} label="Header row" wide active={tableHasHeader(ed)} title="Make the first row a header row (bold) or a normal row" onClick={() => chain().toggleHeaderRow().run()} />
+              <Btn icon={Ic.DeleteTable} label="Delete table" wide onClick={() => chain().deleteTable().run()} />
+            </Group>
+          </>
+        )}
+
+        {shownTab === 'Picture' && ed && picture && (
+          <>
+            <Group label="Size">
+              {(
+                [
+                  ['Small', 200, Ic.PicSmall],
+                  ['Medium', 400, Ic.PicMedium],
+                  ['Large', 600, Ic.PicLarge]
+                ] as const
+              ).map(([label, w, icon]) => (
+                <Btn key={label} icon={icon} label={label} title={`${w} pixels wide`} active={picture.width === w} onClick={() => setPicWidth(w)} />
+              ))}
+              <Btn icon={Ic.PageWidth} label="Original size" wide title="Its own size, never wider than the page" active={!picture.width} onClick={() => setPicWidth(null)} />
+            </Group>
+            <Group label="Position">
+              {(
+                [
+                  ['left', 'Left', Ic.AlignLeft],
+                  ['center', 'Center', Ic.AlignCenter],
+                  ['right', 'Right', Ic.AlignRight]
+                ] as const
+              ).map(([align, label, icon]) => (
+                <Btn
+                  key={align}
+                  icon={icon}
+                  label={label}
+                  active={(picture.textAlign || 'left') === align}
+                  onClick={() => (align === 'left' ? chain().unsetTextAlign().run() : chain().setTextAlign(align).run())}
+                />
+              ))}
+            </Group>
+            <Group label="Picture">
+              <Btn icon={Ic.Trash} label="Delete" title="Remove the picture from the page (the file stays in assets/)" onClick={() => chain().deleteSelection().run()} />
+            </Group>
+          </>
+        )}
+
+        {shownTab === 'View' && (
           <>
             <Group label="Layout">
               <Btn icon={Ic.Sidebar} label={props.sidebarVisible ? 'Hide sidebar' : 'Show sidebar'} active={props.sidebarVisible} onClick={props.toggleSidebar} wide />
+              <Btn
+                icon={Ic.PageWidth}
+                label="Wide page"
+                wide
+                active={settings.pageWidth === 'wide'}
+                title={settings.pageWidth === 'wide' ? 'Back to the normal page width (easier to read)' : 'Use more of the window for the page'}
+                onClick={() => updateSettings({ pageWidth: settings.pageWidth === 'wide' ? 'normal' : 'wide' })}
+              />
             </Group>
             <Group label="Theme">
               <Btn icon={Ic.Moon} label="Dark" active={props.theme === 'dark'} onClick={() => props.setTheme('dark')} />
@@ -439,8 +535,19 @@ export function Ribbon(props: Props) {
             </Group>
             <Group label="Go to">
               <PageList label="Recent" icon={Ic.Clock} empty="No recent pages yet." pages={props.recent} openPage={props.openPage} />
-              <PageList label="Favourites" icon={Ic.Star} empty="No favourites yet. Use the star to add the open page." pages={props.favourites} openPage={props.openPage} />
-              <Btn icon={props.isFavourite ? Ic.StarFilled : Ic.Star} label={props.isFavourite ? 'Unstar' : 'Star page'} title={props.isFavourite ? 'Remove this page from Favourites' : 'Add this page to Favourites'} active={props.isFavourite} disabled={!props.hasPage} onClick={props.toggleFavourite} />
+              <PageList label="Favorites" icon={Ic.Star} empty={'No favorites yet. Use "Add to Favorites" on a page.'} pages={props.favorites} openPage={props.openPage} />
+            </Group>
+            <Group label="This page">
+              <Btn
+                icon={props.isFavorite ? Ic.StarFilled : Ic.Star}
+                label={props.isFavorite ? 'In Favorites' : 'Add to Favorites'}
+                wide
+                title={props.isFavorite ? 'Click to remove this page from Favorites' : 'Add this page to Favorites'}
+                active={props.isFavorite}
+                disabled={!props.hasPage}
+                onClick={props.toggleFavorite}
+              />
+              <Btn icon={Ic.History} label="Page history" wide title="Earlier versions of this page" disabled={!props.hasPage} onClick={props.onHistory} />
             </Group>
           </>
         )}
@@ -449,7 +556,17 @@ export function Ribbon(props: Props) {
   )
 }
 
-/** Minimise / maximise / close, drawn by the app since the system title bar is hidden. */
+/** Whether the table around the cursor starts with a header row. */
+function tableHasHeader(editor: Editor): boolean {
+  const { $from } = editor.state.selection
+  for (let d = $from.depth; d > 0; d--) {
+    const n = $from.node(d)
+    if (n.type.name === 'table') return n.firstChild?.firstChild?.type.name === 'tableHeader'
+  }
+  return false
+}
+
+/** Minimize / maximize / close, drawn by the app since the system title bar is hidden. */
 function WindowButtons() {
   const wc = window.wiki.windowControls
   const [maximized, setMaximized] = useState(false)
@@ -459,12 +576,12 @@ function WindowButtons() {
   }, [wc])
   return (
     <div className="window-buttons">
-      <button className="win-btn" title="Minimise" aria-label="Minimise" onClick={wc.minimize}>
+      <button className="win-btn" title="Minimize" aria-label="Minimize" onClick={wc.minimize}>
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
           <path d="M2 6.5h8" stroke="currentColor" strokeWidth="1.2" />
         </svg>
       </button>
-      <button className="win-btn" title={maximized ? 'Restore' : 'Maximise'} aria-label={maximized ? 'Restore' : 'Maximise'} onClick={wc.toggleMaximize}>
+      <button className="win-btn" title={maximized ? 'Restore' : 'Maximize'} aria-label={maximized ? 'Restore' : 'Maximize'} onClick={wc.toggleMaximize}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
           {maximized ? (
             <>
@@ -485,7 +602,7 @@ function WindowButtons() {
   )
 }
 
-/** A ribbon button that drops down a list of pages (Recent / Favourites). */
+/** A ribbon button that drops down a list of pages (Recent / Favorites). */
 function PageList({ label, icon, empty, pages, openPage }: { label: string; icon: React.ComponentType; empty: string; pages: string[]; openPage(key: string): void }) {
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
@@ -533,7 +650,7 @@ function PageList({ label, icon, empty, pages, openPage }: { label: string; icon
   )
 }
 
-/** Colour picker button (font colour / highlight) with a drop-down palette. */
+/** Color picker button (font color / highlight) with a drop-down palette. */
 function Swatches({
   label,
   letter,
@@ -554,7 +671,7 @@ function Swatches({
   onPick(value: string | null): void
 }) {
   const [open, setOpen] = useState(false)
-  // The button applies the last colour used; the arrow opens the palette.
+  // The button applies the last color used; the arrow opens the palette.
   const [last, setLast] = useState(colors[0])
   const wrap = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -585,7 +702,7 @@ function Swatches({
         </span>
         <span className="swatch-bar" style={{ background: last.swatch }} />
       </button>
-      <button className="rb-swatch-more" title={`${label} colours`} aria-label={`More ${label.toLowerCase()} colours`} aria-expanded={open} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen((o) => !o)}>
+      <button className="rb-swatch-more" title={`${label} colors`} aria-label={`More ${label.toLowerCase()} colors`} aria-expanded={open} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen((o) => !o)}>
         ▾
       </button>
       {open && (

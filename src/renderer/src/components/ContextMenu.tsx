@@ -7,8 +7,19 @@ export interface MenuItem {
   shortcut?: string
 }
 
+/** A row of color swatches inside a menu (e.g. a section's tab color). */
+export interface MenuSwatches {
+  label: string
+  swatches: { name: string; value: string }[]
+  current?: string
+  onPick(value: string): void
+}
+
+type Entry = MenuItem | MenuSwatches | 'sep'
+const isSwatches = (e: Entry): e is MenuSwatches => typeof e === 'object' && 'swatches' in e
+
 /** A small right-click style menu. Closes on outside click, Escape, blur or scroll. */
-export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: (MenuItem | 'sep')[]; onClose: () => void }) {
+export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: Entry[]; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x, y })
 
@@ -51,6 +62,27 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
       {items.map((item, i) =>
         item === 'sep' ? (
           <div key={i} className="menu-sep" role="separator" />
+        ) : isSwatches(item) ? (
+          <div key={i} className="menu-swatches" role="group" aria-label={item.label}>
+            <span className="menu-swatches-label">{item.label}</span>
+            <div className="menu-swatch-row">
+              {item.swatches.map((c) => (
+                <button
+                  key={c.value}
+                  role="menuitemradio"
+                  aria-checked={item.current === c.value}
+                  aria-label={c.name}
+                  title={c.name}
+                  className={`menu-swatch${item.current === c.value ? ' selected' : ''}`}
+                  style={{ background: c.value }}
+                  onClick={() => {
+                    onClose()
+                    item.onPick(c.value)
+                  }}
+                />
+              ))}
+            </div>
+          </div>
         ) : (
           <button
             key={i}

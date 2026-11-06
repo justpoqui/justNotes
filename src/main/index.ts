@@ -23,7 +23,7 @@ function createWindow(): void {
     show: false,
     backgroundColor: '#1e1f22', // dark from the first frame, no white flash
     // No system title bar: the app draws its own (justNotes name, tabs and
-    // minimise / maximise / close buttons in the ribbon's top row).
+    // minimize / maximize / close buttons in the ribbon's top row).
     frame: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -38,7 +38,7 @@ function createWindow(): void {
 
   win.once('ready-to-show', () => win.show())
 
-  // Keep the maximise/restore button in sync with the window.
+  // Keep the maximize/restore button in sync with the window.
   const sendMaximized = () => win.webContents.send('win:maximized', win.isMaximized())
   win.on('maximize', sendMaximized)
   win.on('unmaximize', sendMaximized)

@@ -54,7 +54,7 @@ export function autocorrectWord(word: string, opts: CorrectionOptions): string |
     return lower === 'i' || fixed.startsWith('I') ? (word === fixed ? null : fixed) : matchCase(fixed, word)
   }
 
-  // Near misses: only lower-case or Capitalised words of 4+ letters (not names in ALL CAPS,
+  // Near misses: only lower-case or Capitalized words of 4+ letters (not names in ALL CAPS,
   // not words with digits), only if misspelled, and only if exactly one word is a single
   // edit away — or, failing that, exactly one is a swap of two neighbouring letters.
   const c = opts.checker

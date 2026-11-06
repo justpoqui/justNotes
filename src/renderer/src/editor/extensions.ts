@@ -2,6 +2,7 @@
 // Markdown round-trip that's tested is exactly what the app uses.
 
 import { Extension, type AnyExtension } from '@tiptap/core'
+import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import Highlight from '@tiptap/extension-highlight'
 import Image from '@tiptap/extension-image'
@@ -21,13 +22,13 @@ import { WikiLink } from './WikiLink'
 
 const lowlight = createLowlight(common)
 
-// Markdown has no font size, text colour or coloured highlight, so those are
+// Markdown has no font size, text color or colored highlight, so those are
 // written as small inline HTML tags that most Markdown viewers still display:
 //   <span style="color: #e06c75; font-size: 20px">text</span>
-//   ==plain highlight==   or   <mark style="background-color: #a5d6a7">coloured</mark>
+//   ==plain highlight==   or   <mark style="background-color: #a5d6a7">colored</mark>
 const SAFE_CSS_VALUE = /^[#\w\s.,()%'-]+$/
 
-/** Text colour + font size, saved as <span style="..."> */
+/** Text color + font size, saved as <span style="..."> */
 const StyledText = TextStyle.extend({
   // Lowest priority = innermost tag, so bold/italic/links wrap it in Markdown
   // ("**<span ...>x</span>**"). Markdown inside an HTML tag would not be read back.
@@ -45,7 +46,7 @@ const StyledText = TextStyle.extend({
   }
 })
 
-/** Highlight: "==text==" for the default colour, <mark style> for others. */
+/** Highlight: "==text==" for the default color, <mark style> for others. */
 const ColorHighlight = Highlight.extend({
   priority: 45,
   // Like the standard "==text==" reader, but the text may contain HTML tags such as
@@ -130,7 +131,7 @@ const AlignedBlocks = Extension.create({
   },
   parseMarkdown: (token: any, h: any) =>
     h.parseChildren(token.tokens ?? []).map((n: any) =>
-      n.type === 'paragraph' || n.type === 'heading' ? { ...n, attrs: { ...(n.attrs ?? {}), textAlign: token.align } } : n
+      n.type === 'paragraph' || n.type === 'heading' || n.type === 'image' ? { ...n, attrs: { ...(n.attrs ?? {}), textAlign: token.align } } : n
     )
 })
 
@@ -150,7 +151,7 @@ const ReadableMarkdown = Extension.create({
         (parent?.type && this.codeTypes?.has(parent.type)) ||
         (node.marks || []).some((m: any) => this.codeTypes?.has(typeof m === 'string' ? m : m.type))
       if (inCode) return text
-      // Inside an HTML tag (coloured/sized text) the text is read back as HTML, not Markdown.
+      // Inside an HTML tag (colored/sized text) the text is read back as HTML, not Markdown.
       const marks = node.marks || []
       if (marks.some(isHtmlMark)) return escapeHtmlText(text)
       // Inside "==highlight==" any "=" would end it early, so write it as &#61; (read back as "=").
@@ -173,18 +174,118 @@ export interface ExtensionOptions {
 
 export function createExtensions({ resolveImageSrc = (s) => s, placeholder, extra = [] }: ExtensionOptions = {}): AnyExtension[] {
   const PageImage = Image.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        // Display width in pixels (null = natural size, never wider than the page).
+        width: { default: null, parseHTML: (el: HTMLElement) => Number(el.getAttribute('width')) || null },
+        height: { default: null, rendered: false }
+      }
+    },
+    // A picture's width is written Obsidian-style inside the alt text: ![alt|300](path)
+    parseMarkdown: (token: any, h: any) => {
+      const m = /^(.*?)\|(\d{1,5})$/s.exec(String(token.text ?? ''))
+      return h.createNode('image', { src: token.href, title: token.title || null, alt: m ? m[1] : token.text, width: m ? Number(m[2]) : null })
+    },
     // Spaces and brackets in a file name would break the Markdown link, so they're
     // written as %20 / %28 / %29 (every Markdown viewer understands those).
-    renderMarkdown: (node: any) => {
+    renderMarkdown: (node: any, _h: any, ctx: any) => {
       const src = String(node.attrs?.src ?? '').replace(/ /g, '%20').replace(/\(/g, '%28').replace(/\)/g, '%29')
-      const alt = String(node.attrs?.alt ?? '').replace(/([\\[\]])/g, '\\$1')
+      let alt = String(node.attrs?.alt ?? '').replace(/([\\[\]])/g, '\\$1')
+      const width = Number(node.attrs?.width) || 0
+      if (width > 0) alt += `|${Math.round(width)}`
       const title = node.attrs?.title ? ` "${String(node.attrs.title).replace(/"/g, '\\"')}"` : ''
-      return `![${alt}](${src}${title})`
+      return wrapAligned(`![${alt}](${src}${title})`, node, ctx)
     },
     // The document (and so the saved Markdown) keeps the relative path;
     // only what's drawn on screen uses the resolved URL.
     renderHTML({ HTMLAttributes }) {
-      return ['img', { ...HTMLAttributes, src: resolveImageSrc(String(HTMLAttributes.src ?? '')) }]
+      const { width, textAlign, ...rest } = HTMLAttributes as Record<string, unknown>
+      return ['img', { ...rest, src: resolveImageSrc(String(rest.src ?? '')), ...(width ? { width } : {}), ...(textAlign ? { 'data-align': textAlign } : {}) }]
+    },
+    // Chrome sometimes keeps a selected picture selected when you then click into text
+    // (ProseMirror notes this quirk), and typing would replace the picture. A click
+    // outside the selected picture always moves the cursor there.
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          props: {
+            handleClick(view, pos, event) {
+              const sel = view.state.selection
+              if (!(sel instanceof NodeSelection) || event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return false
+              if (pos >= sel.from && pos <= sel.to) return false
+              view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos))))
+              return true
+            }
+          }
+        })
+      ]
+    },
+    // On screen: the picture plus a handle to drag its width, aligned left / center / right.
+    addNodeView() {
+      return ({ node: initial, getPos, editor }) => {
+        let node = initial
+        const dom = document.createElement('div')
+        dom.className = 'img-block'
+        const img = document.createElement('img')
+        img.draggable = false
+        const handle = document.createElement('span')
+        handle.className = 'img-handle'
+        handle.title = 'Drag to resize'
+        const frame = document.createElement('span')
+        frame.className = 'img-frame'
+        frame.append(img, handle)
+        dom.append(frame)
+        const paint = () => {
+          img.src = resolveImageSrc(String(node.attrs.src ?? ''))
+          img.alt = String(node.attrs.alt ?? '')
+          if (node.attrs.title) img.title = String(node.attrs.title)
+          else img.removeAttribute('title')
+          img.style.width = node.attrs.width ? `${node.attrs.width}px` : ''
+          dom.dataset.align = node.attrs.textAlign || 'left'
+        }
+        paint()
+        handle.addEventListener('mousedown', (e) => {
+          if (!editor.isEditable) return
+          e.preventDefault()
+          e.stopPropagation()
+          const startX = e.clientX
+          // Mouse moves are in screen pixels; the page may be zoomed.
+          const scale = img.getBoundingClientRect().width / (img.offsetWidth || 1) || 1
+          const startW = img.offsetWidth
+          const maxW = dom.clientWidth || startW
+          let w = startW
+          const move = (ev: MouseEvent) => {
+            w = Math.round(Math.max(40, Math.min(maxW, startW + (ev.clientX - startX) / scale)))
+            img.style.width = `${w}px`
+          }
+          const up = () => {
+            window.removeEventListener('mousemove', move)
+            window.removeEventListener('mouseup', up)
+            document.body.classList.remove('resizing-img')
+            const pos = typeof getPos === 'function' ? getPos() : undefined
+            if (pos === undefined || w === startW) return
+            editor.chain().setNodeSelection(pos).updateAttributes('image', { width: w >= maxW - 2 ? null : w }).run()
+          }
+          document.body.classList.add('resizing-img')
+          window.addEventListener('mousemove', move)
+          window.addEventListener('mouseup', up)
+        })
+        return {
+          dom,
+          update(n) {
+            if (n.type !== node.type) return false
+            node = n
+            paint()
+            return true
+          },
+          selectNode: () => dom.classList.add('selected'),
+          deselectNode: () => dom.classList.remove('selected'),
+          stopEvent: (e) => e.target === handle,
+          // (picture attribute changes are ours; but selection changes must reach the editor)
+          ignoreMutation: (m) => m.type !== 'selection'
+        }
+      }
     }
   })
 
@@ -199,7 +300,7 @@ export function createExtensions({ resolveImageSrc = (s) => s, placeholder, extr
     AlignedParagraph,
     AlignedHeading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
     AlignedBlocks,
-    TextAlign.configure({ types: ['heading', 'paragraph'], alignments: ['left', 'center', 'right', 'justify'] }),
+    TextAlign.configure({ types: ['heading', 'paragraph', 'image'], alignments: ['left', 'center', 'right', 'justify'] }),
     HtmlUnderline,
     CodeBlockLowlight.configure({ lowlight, defaultLanguage: null }),
     TaskList,

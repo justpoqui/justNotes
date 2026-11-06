@@ -105,8 +105,8 @@ describe('escapeMarkdownText', () => {
   })
 })
 
-describe('text colour, size and highlight', () => {
-  it('saves and reloads coloured / sized text and highlights', () => {
+describe('text color, size and highlight', () => {
+  it('saves and reloads colored / sized text and highlights', () => {
     const e = load('Plain')
     e.commands.setContent({
       type: 'doc',
@@ -139,7 +139,7 @@ describe('text colour, size and highlight', () => {
     expect(marks).toEqual(['bold', 'textStyle'])
   })
 
-  it('keeps special characters inside coloured text', () => {
+  it('keeps special characters inside colored text', () => {
     const e = load('')
     const text = 'a < b & *c* `d` \\ ==e=='
     e.commands.setContent({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text, marks: [{ type: 'textStyle', attrs: { color: '#e06c75' } }] }] }] })
@@ -149,7 +149,7 @@ describe('text colour, size and highlight', () => {
     expect(back[0]).toMatchObject({ text, marks: [{ type: 'textStyle', attrs: { color: '#e06c75' } }] })
   })
 
-  it('nests plain highlight and coloured text', () => {
+  it('nests plain highlight and colored text', () => {
     const md = '==<span style="color: #e06c75">red on yellow</span>==\n'
     expect(roundTrip(md)).toBe(md)
   })
@@ -179,3 +179,24 @@ describe('underline, alignment and font family', () => {
   })
 })
 
+
+describe('pictures', () => {
+  it('keeps a picture width (![alt|300](…)) and alignment', () => {
+    const md = 'Intro\n\n![logo|300](assets/a%20b.png)\n\n<div align="center">\n\n![|120](assets/c.png)\n\n</div>\n\n![plain](assets/d.png)\n'
+    const e = load(md)
+    const imgs = (e.getJSON().content ?? []).flatMap((n: any) => (n.type === 'image' ? [n] : (n.content ?? []).filter((c: any) => c.type === 'image')))
+    expect(imgs.map((i: any) => [i.attrs.alt, i.attrs.width, i.attrs.textAlign ?? null])).toEqual([
+      ['logo', 300, null],
+      ['', 120, 'center'],
+      ['plain', null, null]
+    ])
+    expect(save(e)).toBe(md)
+  })
+  it('a new width is written into the file', () => {
+    const e = load('![x](p.png)\n')
+    e.commands.setNodeSelection(0)
+    e.commands.updateAttributes('image', { width: 250 })
+    e.commands.setTextAlign('right')
+    expect(save(e)).toBe('<div align="right">\n\n![x|250](p.png)\n\n</div>\n')
+  })
+})

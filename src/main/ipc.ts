@@ -64,6 +64,8 @@ export function registerIpc(engine: FileEngine): void {
     deletePage: (nb, sec, name) => engine.deletePage(nb, sec, name),
     duplicatePage: (nb, sec, name) => engine.duplicatePage(nb, sec, name),
     setOrder: (nb, sec, names) => engine.setOrder(nb, sec, names),
+    setNotebookOrder: (names) => engine.setNotebookOrder(names),
+    setSectionColor: (nb, sec, color) => engine.setSectionColor(nb, sec, color),
     appendToPage: (nb, sec, name, md) => engine.appendToPage(nb, sec, name, md),
     listTrash: () => engine.listTrash(),
     restoreFromTrash: (id) => engine.restoreFromTrash(id),
@@ -71,6 +73,7 @@ export function registerIpc(engine: FileEngine): void {
     listVersions: (nb, sec, name) => engine.listVersions(nb, sec, name),
     readVersion: (nb, sec, name, id) => engine.readVersion(nb, sec, name, id),
     restoreVersion: (nb, sec, name, id) => engine.restoreVersion(nb, sec, name, id),
+    saveVersion: (nb, sec, name) => engine.saveVersion(nb, sec, name),
     exportNotebook: async (nb) => {
       const name = String(nb)
       const win = BrowserWindow.getFocusedWindow()

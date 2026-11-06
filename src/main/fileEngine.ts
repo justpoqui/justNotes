@@ -34,6 +34,9 @@ const MAX_ASSET_BYTES = 25 * 1024 * 1024
 export const TRASH_DIR = '.trash'
 export const HISTORY_DIR = '.history'
 export const ORDER_FILE = '.order.json'
+/** Each notebook's section colors: { "Section": "#e5a26b" }. */
+export const COLORS_FILE = '.colors.json'
+const COLOR = /^#[0-9a-f]{6}$/i
 const TRASH_KEEP_DAYS = 30
 const HISTORY_EVERY_MS = 10 * 60 * 1000
 const HISTORY_KEEP = 50
@@ -143,7 +146,7 @@ export class FileEngine {
     // the duplicate-name check (e.g. "Ideas" and "ideas" created in the same instant).
     for (const m of [
       'createNotebook', 'renameNotebook', 'deleteNotebook', 'createSection', 'renameSection', 'deleteSection',
-      'createPage', 'renamePage', 'movePage', 'deletePage', 'duplicatePage', 'setOrder', 'restoreFromTrash',
+      'createPage', 'renamePage', 'movePage', 'deletePage', 'duplicatePage', 'setOrder', 'setNotebookOrder', 'setSectionColor', 'restoreFromTrash',
       'emptyTrash', 'importNotebook', 'restoreVersion'
     ] as const) {
       const original = (this[m] as (...args: unknown[]) => Promise<unknown>).bind(this)
@@ -279,6 +282,7 @@ export class FileEngine {
       for (const nb of await this.subdirs(this.root)) {
         const nbPath = this.notebookDir(nb)
         const sections: SectionInfo[] = []
+        const colors = await this.readColors(nbPath)
         for (const sec of await this.subdirs(nbPath)) {
           const secPath = this.sectionDir(nb, sec)
           const files = await fs.readdir(secPath, { withFileTypes: true })
@@ -289,11 +293,11 @@ export class FileEngine {
               const name = f.name.slice(0, -PAGE_EXT.length)
               return { name, path: path.join(secPath, f.name), hasCanvas: names.has(name + CANVAS_EXT) }
             })
-          sections.push({ name: sec, path: secPath, pages: sortByOrder(pages, await this.readOrder(secPath)) })
+          sections.push({ name: sec, path: secPath, pages: sortByOrder(pages, await this.readOrder(secPath)), ...(colors[sec] ? { color: colors[sec] } : {}) })
         }
         notebooks.push({ name: nb, path: nbPath, sections: sortByOrder(sections, await this.readOrder(nbPath)) })
       }
-      return { root: this.root, notebooks: notebooks.sort(byName) }
+      return { root: this.root, notebooks: sortByOrder(notebooks, await this.readOrder(this.root)) }
     } catch (err) {
       wrapIo(err, 'Reading the justNotes folder')
     }
@@ -311,6 +315,7 @@ export class FileEngine {
     } catch (err) {
       wrapIo(err, `Creating notebook "${name}"`)
     }
+    await this.addToOrder(this.root, name)
     return { name, path: dir, sections: [] }
   }
 
@@ -325,6 +330,7 @@ export class FileEngine {
     } catch (err) {
       wrapIo(err, `Renaming notebook "${oldName}"`)
     }
+    await this.renameInOrder(this.root, oldName, name)
     return name
   }
 
@@ -339,7 +345,9 @@ export class FileEngine {
         throw new EngineFailure('NOT_EMPTY', `Notebook "${name}" is not empty.`, contents)
       }
     }
-    return this.toTrash({ kind: 'notebook', notebook: name }, [[dir, 'item']])
+    const id = await this.toTrash({ kind: 'notebook', notebook: name }, [[dir, 'item']])
+    await this.removeFromOrder(this.root, name)
+    return id
   }
 
   // ---------- sections ----------
@@ -373,6 +381,12 @@ export class FileEngine {
       wrapIo(err, `Renaming section "${oldName}"`)
     }
     await this.renameInOrder(this.notebookDir(nb), oldName, name)
+    const colors = await this.readColors(this.notebookDir(nb))
+    if (colors[oldName]) {
+      colors[name] = colors[oldName]
+      delete colors[oldName]
+      await this.writeColors(this.notebookDir(nb), colors).catch(() => {})
+    }
     return name
   }
 
@@ -721,6 +735,53 @@ export class FileEngine {
     if (order.includes(from)) await this.writeOrder(dir, order.map((n) => (n === from ? to : n))).catch(() => {})
   }
 
+  /** Saves the order of the notebooks (File ▸ Open). */
+  async setNotebookOrder(names: unknown): Promise<void> {
+    if (!Array.isArray(names) || names.length > 10000 || !names.every((n) => typeof n === 'string')) throw new EngineFailure('INVALID_NAME', 'Invalid order.')
+    await this.ensureRoot()
+    try {
+      await this.writeOrder(this.root, (names as string[]).map((n) => existingName(n, 'notebook')))
+    } catch (err) {
+      wrapIo(err, 'Saving the order')
+    }
+  }
+
+  // ---------- section colors ----------
+
+  private async readColors(nbDir: string): Promise<Record<string, string>> {
+    try {
+      const data = JSON.parse(await fs.readFile(path.join(nbDir, COLORS_FILE), 'utf8'))
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return {}
+      return Object.fromEntries(Object.entries(data).filter((e): e is [string, string] => typeof e[1] === 'string' && COLOR.test(e[1])))
+    } catch {
+      return {}
+    }
+  }
+
+  private async writeColors(nbDir: string, colors: Record<string, string>): Promise<void> {
+    const file = path.join(nbDir, COLORS_FILE)
+    const tmp = tempPathFor(file)
+    await fs.writeFile(tmp, JSON.stringify(colors, null, 1) + '\n', 'utf8')
+    await fs.rename(tmp, file)
+  }
+
+  /** Sets (or with null, clears) a section's tab color. */
+  async setSectionColor(nbRaw: string, secRaw: string, color: unknown): Promise<void> {
+    const nb = existingName(nbRaw, 'notebook')
+    const sec = existingName(secRaw, 'section')
+    if (color !== null && (typeof color !== 'string' || !COLOR.test(color))) throw new EngineFailure('INVALID_NAME', 'Invalid color.')
+    const nbDir = this.notebookDir(nb)
+    await this.requireDir(this.sectionDir(nb, sec), `Section "${sec}"`)
+    const colors = await this.readColors(nbDir)
+    if (color === null) delete colors[sec]
+    else colors[sec] = color.toLowerCase()
+    try {
+      await this.writeColors(nbDir, colors)
+    } catch (err) {
+      wrapIo(err, 'Saving the section color')
+    }
+  }
+
   /** Saves the order of a notebook's sections (section omitted) or a section's pages. */
   async setOrder(nbRaw: string, secRaw: string | null, names: unknown): Promise<void> {
     if (!Array.isArray(names) || names.length > 10000 || !names.every((n) => typeof n === 'string')) throw new EngineFailure('INVALID_NAME', 'Invalid order.')
@@ -842,6 +903,7 @@ export class FileEngine {
         const name = await this.freeName(this.root, existingName(item.notebook, 'notebook'))
         await fs.rename(path.join(dir, 'item'), this.notebookDir(name))
         await fs.rm(dir, { recursive: true, force: true })
+        await this.addToOrder(this.root, name)
         return { notebook: name }
       }
       const nb = existingName(item.notebook, 'notebook')
@@ -955,6 +1017,19 @@ export class FileEngine {
     }
   }
 
+  /** Keeps a copy of the page as it is now (History ▸ Save a version now). Resolves to false if it was empty. */
+  async saveVersion(nbRaw: string, secRaw: string, pageRaw: string): Promise<boolean> {
+    const file = this.pageFile(existingName(nbRaw, 'notebook'), existingName(secRaw, 'section'), existingName(pageRaw, 'page'))
+    if (!(await this.isFile(file))) throw new EngineFailure('NOT_FOUND', 'That page no longer exists on disk.')
+    const before = (await this.listVersions(nbRaw, secRaw, pageRaw)).length
+    try {
+      await this.snapshot(file, true)
+    } catch (err) {
+      wrapIo(err, 'Saving a version')
+    }
+    return (await this.listVersions(nbRaw, secRaw, pageRaw)).length !== before || before >= HISTORY_KEEP
+  }
+
   /** Makes an earlier version the current page (the current text is kept in the history first). */
   async restoreVersion(nbRaw: string, secRaw: string, pageRaw: string, idRaw: unknown): Promise<string> {
     const text = await this.readVersion(nbRaw, secRaw, pageRaw, idRaw)
@@ -1034,7 +1109,7 @@ export class FileEngine {
     await this.ensureRoot()
     nbName = await this.freeName(this.root, nbName)
     const target = this.notebookDir(nbName)
-    const allowed = (p: string) => p.endsWith(PAGE_EXT) || p.endsWith(CANVAS_EXT) || p.endsWith('/' + ORDER_FILE) || p === ORDER_FILE || IMAGE_EXTS.has(path.extname(p).toLowerCase())
+    const allowed = (p: string) => p.endsWith(PAGE_EXT) || p.endsWith(CANVAS_EXT) || p.endsWith('/' + ORDER_FILE) || p === ORDER_FILE || p === COLORS_FILE || IMAGE_EXTS.has(path.extname(p).toLowerCase())
     let written = 0
     try {
       await fs.mkdir(target)
@@ -1066,7 +1141,7 @@ export class FileEngine {
     const counts = { sections: 0, pages: 0, otherFiles: 0 }
     const walk = async (d: string, depth: number): Promise<void> => {
       for (const e of await fs.readdir(d, { withFileTypes: true })) {
-        if (e.name === HISTORY_DIR || e.name === ORDER_FILE || TEMP_FILE.test(e.name)) continue
+        if (e.name === HISTORY_DIR || e.name === ORDER_FILE || e.name === COLORS_FILE || TEMP_FILE.test(e.name)) continue
         const full = path.join(d, e.name)
         // In a notebook, depth-0 folders are sections; anything else is "other".
         if (e.isDirectory()) {

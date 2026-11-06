@@ -63,7 +63,7 @@ export default function WhiteboardCanvas({ notebook, section, page, theme, onErr
       pending.current = null
       setStatus('saving')
       const previous = lastSaved.current
-      lastSaved.current = json // set first so the file watcher recognises our own write
+      lastSaved.current = json // set first so the file watcher recognizes our own write
       const r = await window.wiki.writeCanvas(notebook, section, page, json)
       if (r.ok) setStatus(pending.current ? 'unsaved' : 'saved')
       else {
@@ -162,11 +162,11 @@ export default function WhiteboardCanvas({ notebook, section, page, theme, onErr
         theme={theme}
         name={page}
         UIOptions={{
-          canvasActions: { loadScene: false, saveToActiveFile: false, export: false, toggleTheme: false, saveAsImage: true, clearCanvas: true, changeViewBackgroundColor: true }
+          canvasActions: { loadScene: false, saveToActiveFile: false, export: false, toggleTheme: false, saveAsImage: false, clearCanvas: true, changeViewBackgroundColor: true }
         }}
       >
+        {/* (A picture of the whiteboard goes onto the page with Draw ▸ Add to page.) */}
         <MainMenu>
-          <MainMenu.DefaultItems.SaveAsImage />
           <MainMenu.DefaultItems.ClearCanvas />
           <MainMenu.Separator />
           <MainMenu.DefaultItems.ChangeCanvasBackground />

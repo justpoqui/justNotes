@@ -16,7 +16,7 @@ export interface Settings {
   autocorrect: boolean
   /** Also fix a misspelling that is one letter off from exactly one word. */
   fixNearMisses: boolean
-  /** Capitalise the first letter of a sentence. */
+  /** Capitalize the first letter of a sentence. */
   capitalizeSentences: boolean
   /** (c) → ©, -- → –, -> → →, ... → …, 1/2 → ½ */
   autoformat: boolean
@@ -26,6 +26,8 @@ export interface Settings {
   replacements: Replacement[]
   /** Words added with "Add to dictionary". */
   dictionary: string[]
+  /** Words chosen "Ignore" for (or whose automatic correction was undone). */
+  ignoredWords: string[]
   /** Show the word / character count in the status bar. */
   wordCount: boolean
   /** Default font for page text ('' = the app's standard font). */
@@ -40,6 +42,8 @@ export interface Settings {
   appZoom: number
   /** Spell-check dictionary. */
   spellLanguage: 'en-US' | 'en-GB'
+  /** Page text column: normal (easy reading) or wide. */
+  pageWidth: 'normal' | 'wide'
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -51,13 +55,15 @@ export const DEFAULT_SETTINGS: Settings = {
   smartQuotes: true,
   replacements: [],
   dictionary: [],
+  ignoredWords: [],
   wordCount: true,
   editorFont: '',
   editorFontSize: 16,
   autosaveDelay: 600,
   pageZoom: 1,
   appZoom: 1,
-  spellLanguage: 'en-US'
+  spellLanguage: 'en-US',
+  pageWidth: 'normal'
 }
 
 let current: Settings = { ...DEFAULT_SETTINGS, ...load<Partial<Settings>>('jn.settings', {}) }

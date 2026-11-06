@@ -13,7 +13,7 @@ import { clearActivePage, setActivePage } from '../editor/activePage'
 import { registerFlusher } from '../editor/saveCoordinator'
 import { Search } from '../editor/Search'
 import { getSettings, updateSettings } from '../lib/settings'
-import { ignoredWords, Proofing, refreshSpelling } from '../proofing/Proofing'
+import { ignoreWord, Proofing, refreshSpelling, WordUndo } from '../proofing/Proofing'
 import { getSpellChecker } from '../proofing/spellchecker'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FindBar } from './FindBar'
@@ -30,6 +30,11 @@ interface Props {
   onError(message: string): void
   /** Element in the page bar where the save status is shown. */
   statusSlot?: HTMLElement | null
+  /**
+   * The page's title (its first "# Heading", while it matches the page name) was changed:
+   * rename the page to match. Resolves to false if that name can't be used.
+   */
+  onTitleChange?(title: string): Promise<boolean>
 }
 
 /** Loads the file, then mounts the editor with its contents. */
@@ -55,7 +60,7 @@ export function PageEditor(props: Props) {
   return <EditorView {...props} initial={initial} />
 }
 
-function EditorView({ notebook, section, page, initial, onError, statusSlot }: Props & { initial: string }) {
+function EditorView({ notebook, section, page, initial, onError, statusSlot, onTitleChange }: Props & { initial: string }) {
   const [status, setStatus] = useState<SaveStatus>('saved')
   const [conflict, setConflict] = useState<string | null>(null)
   const [slash, setSlash] = useState<SlashMenuState | null>(null)
@@ -86,6 +91,28 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
 
+  // Title ↔ page name: while the first heading matches the page name, editing that heading
+  // renames the page once the cursor leaves it (not while typing, so nothing jumps).
+  const titleRef = useRef({ page, synced: firstHeading(parts.body) === page, pending: false, refused: '' as string, onTitleChange })
+  titleRef.current.onTitleChange = onTitleChange
+  if (titleRef.current.page !== page) titleRef.current = { ...titleRef.current, page, synced: true, pending: false }
+  const checkTitle = (ed: Editor) => {
+    const t = titleRef.current
+    if (!t.synced || t.pending || !t.onTitleChange || !ed.isEditable) return
+    const first = ed.state.doc.firstChild
+    if (!first || first.type.name !== 'heading' || first.attrs.level !== 1) return
+    const { from, to } = ed.state.selection
+    if (ed.isFocused && from <= first.nodeSize && to >= 1) return // still in the title
+    const title = first.textContent.trim().replace(/\s+/g, ' ')
+    if (!title || title === t.page || title === t.refused || title.length > 120) return
+    t.pending = true
+    void t.onTitleChange(title).then((ok) => {
+      if (titleRef.current !== t) return
+      t.pending = false
+      if (!ok) t.refused = title
+    })
+  }
+
   const serialize = (ed: Editor) => frontMatter.current + finishMarkdown(ed.getMarkdown())
 
   /** Puts a file's contents (from disk) into the editor without marking it as edited. */
@@ -113,7 +140,7 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
       dirty.current = false
       setStatus('saving')
       const previous = lastSaved.current
-      lastSaved.current = md // set first, so the file watcher recognises our own write
+      lastSaved.current = md // set first, so the file watcher recognizes our own write
       const r = await window.wiki.writePage(notebook, section, page, md)
       if (r.ok) {
         setStatus(dirty.current ? 'unsaved' : 'saved')
@@ -158,6 +185,7 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
       resolveImageSrc: (src) => resolveImageSrc(notebook, section, src),
       extra: [
         Proofing,
+        WordUndo,
         Search,
         SlashCommand.configure({
           items: (q) => filterSlashItems(items, q),
@@ -220,7 +248,11 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
         }
       },
       onCreate: ({ editor: ed }) => scheduleStats(ed as Editor),
-      onTransaction: ({ editor: ed }) => scheduleStats(ed as Editor),
+      onTransaction: ({ editor: ed }) => {
+        scheduleStats(ed as Editor)
+        checkTitle(ed as Editor)
+      },
+      onBlur: ({ editor: ed }) => checkTitle(ed as Editor),
       onUpdate: ({ transaction }) => {
         if (!transaction.docChanged) return
         dirty.current = true
@@ -260,13 +292,16 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
   // Save on Ctrl+S, before the page is renamed/deleted (flushAllSaves), when switching pages,
   // and when the window closes (App registers flushAllSaves with onBeforeClose).
   useEffect(() => registerFlusher(() => save()), [save])
+  const saveRef = useRef(save)
+  saveRef.current = save
   useLayoutEffect(
     () => () => {
       // Leaving the page: grab the text now, while the editor still exists, then save it.
+      // (Only on leaving: after a rename the editor stays open under the new name.)
       const ed = editorRef.current
-      if (dirty.current && ed && !ed.isDestroyed) void save(serialize(ed))
+      if (dirty.current && ed && !ed.isDestroyed) void saveRef.current(serialize(ed))
     },
-    [save]
+    []
   )
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -331,7 +366,7 @@ function EditorView({ notebook, section, page, initial, onError, statusSlot }: P
       items.push({
         label: 'Ignore',
         onClick: () => {
-          ignoredWords.add(word.toLowerCase())
+          ignoreWord(word)
           refreshSpelling(editor.view)
         }
       })
@@ -574,4 +609,10 @@ function FormatMenu({ editor }: { editor: Editor }) {
       )}
     </BubbleMenu>
   )
+}
+
+/** Text of the page's first line if it's a "# Heading". */
+function firstHeading(md: string): string | null {
+  const m = /^\s*# +(.+?)\s*#*\s*$/m.exec(md.split('\n').find((l) => l.trim()) ?? '')
+  return m ? m[1].trim() : null
 }

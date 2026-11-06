@@ -90,7 +90,7 @@ export function MoveDialog({ tree, pageKey, onMove, onClose }: Props) {
                     aria-checked={target === s.name}
                     disabled={isCurrent}
                     className={`move-section${target === s.name ? ' selected' : ''}`}
-                    style={{ '--tab-color': SECTION_COLORS[i % SECTION_COLORS.length] } as React.CSSProperties}
+                    style={{ '--tab-color': s.color ?? SECTION_COLORS[i % SECTION_COLORS.length].value } as React.CSSProperties}
                     onClick={() => {
                       setTarget(s.name)
                       setError(null)

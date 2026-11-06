@@ -29,6 +29,8 @@ export interface SectionInfo {
   name: string
   path: string
   pages: PageInfo[]
+  /** Tab color ("#rrggbb"), once one has been given. */
+  color?: string
 }
 
 export interface NotebookInfo {
@@ -98,6 +100,8 @@ export interface WikiApi {
   duplicatePage(notebook: string, section: string, name: string): Promise<Result<string>>
   /** Saves the order of a notebook's sections (section = null) or of a section's pages. */
   setOrder(notebook: string, section: string | null, names: string[]): Promise<Result<void>>
+  setNotebookOrder(names: string[]): Promise<Result<void>>
+  setSectionColor(notebook: string, section: string, color: string | null): Promise<Result<void>>
   /** Adds Markdown at the end of a page. */
   appendToPage(notebook: string, section: string, name: string, markdown: string): Promise<Result<void>>
 
@@ -112,6 +116,7 @@ export interface WikiApi {
   readVersion(notebook: string, section: string, name: string, id: string): Promise<Result<string>>
   /** Makes a version the current page; resolves to its text. */
   restoreVersion(notebook: string, section: string, name: string, id: string): Promise<Result<string>>
+  saveVersion(notebook: string, section: string, name: string): Promise<Result<boolean>>
 
   /** Saves the notebook as a .zip (save dialog). Resolves to the path, or null if cancelled. */
   exportNotebook(notebook: string): Promise<Result<string | null>>

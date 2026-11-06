@@ -26,7 +26,7 @@ export function findUnsupported(md: string): string[] {
     .replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, '') // fenced code
     .replace(/^( {4}|\t).*$/gm, '') // indented code
     .replace(/`+[^`\n]*`+/g, '') // inline code
-    // Tags the editor itself writes for text colour, font size and highlights.
+    // Tags the editor itself writes for text color, font size and highlights.
     .replace(/<span style="(?:\s*(?:color|font-size|font-family):\s*[#\w\s.,()%'-]+;?)+\s*">|<\/span>/gi, '')
     .replace(/<\/?u>/gi, '')
     .replace(/^<div align="(?:left|center|right|justify)">$|^<\/div>$/gm, '')

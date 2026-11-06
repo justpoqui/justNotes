@@ -6,9 +6,10 @@
 
 import { Extension } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
+import { closeHistory } from '@tiptap/pm/history'
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
-import { getSettings, subscribeSettings } from '../lib/settings'
+import { getSettings, subscribeSettings, updateSettings } from '../lib/settings'
 import { autocorrectWord, autoformat, smartQuote, startsSentence } from './rules'
 import { getSpellChecker, isMisspelled } from './spellchecker'
 
@@ -21,8 +22,22 @@ declare module '@tiptap/core' {
   }
 }
 
-/** Words the user reverted or chose "Ignore" for (this session only). */
-export const ignoredWords = new Set<string>()
+/** Words the user reverted or chose "Ignore" for (remembered; listed in Settings ▸ Dictionary). */
+export const ignoredWords = new Set<string>(getSettings().ignoredWords.map((w) => w.toLowerCase()))
+subscribeSettings(() => {
+  const now = getSettings().ignoredWords
+  if (now.length === ignoredWords.size && now.every((w) => ignoredWords.has(w))) return
+  ignoredWords.clear()
+  now.forEach((w) => ignoredWords.add(w.toLowerCase()))
+})
+
+/** Stops checking / auto-correcting a word, from now on. */
+export function ignoreWord(word: string): void {
+  const w = word.toLowerCase()
+  if (ignoredWords.has(w)) return
+  ignoredWords.add(w)
+  updateSettings({ ignoredWords: [...ignoredWords].sort((a, b) => a.localeCompare(b)) })
+}
 
 interface AutoChange {
   from: number
@@ -87,7 +102,7 @@ export const Proofing = Extension.create({
           if (!last || state.doc !== last.doc || !state.selection.empty || state.selection.from !== last.cursor) return false
           if (dispatch) {
             dispatch(state.tr.insertText(last.original, last.from, last.to))
-            if (last.word) ignoredWords.add(last.word.toLowerCase())
+            if (last.word) ignoreWord(last.word)
           }
           this.storage.last = null
           return true
@@ -199,6 +214,29 @@ export const Proofing = Extension.create({
     })
 
     return [autoPlugin, spellPlugin]
+  }
+})
+
+/**
+ * Undo goes back a word at a time: each space typed starts a new undo step (otherwise
+ * typing without pausing would all be undone at once). Lowest priority, so Markdown
+ * shortcuts ("# ", "- ") and AutoCorrect get the space first.
+ */
+export const WordUndo = Extension.create({
+  name: 'wordUndo',
+  priority: 1,
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          handleTextInput(view, from, to, text) {
+            if (text !== ' ' || from !== to || view.composing) return false
+            view.dispatch(closeHistory(view.state.tr.insertText(text, from, to)))
+            return true
+          }
+        }
+      })
+    ]
   }
 })
 

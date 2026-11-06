@@ -8,8 +8,6 @@ const TABS = ['General', 'Proofing', 'AutoCorrect', 'Dictionary'] as const
 type Tab = (typeof TABS)[number]
 
 interface Props {
-  theme: 'dark' | 'light'
-  setTheme(theme: 'dark' | 'light'): void
   onClose(): void
 }
 
@@ -25,7 +23,7 @@ function Check({ label, hint, checked, onChange, disabled = false }: { label: st
   )
 }
 
-export function SettingsDialog({ theme, setTheme, onClose }: Props) {
+export function SettingsDialog({ onClose }: Props) {
   const [tab, setTab] = useState<Tab>('General')
   const s = useSettings()
   const [fonts, setFonts] = useState<string[]>([])
@@ -79,17 +77,7 @@ export function SettingsDialog({ theme, setTheme, onClose }: Props) {
             {tab === 'General' && (
               <>
                 <h3>Appearance</h3>
-                <div className="set-row">
-                  <span className="set-label">Theme</span>
-                  <div className="segmented">
-                    <button className={theme === 'dark' ? 'selected' : ''} onClick={() => setTheme('dark')}>
-                      Dark
-                    </button>
-                    <button className={theme === 'light' ? 'selected' : ''} onClick={() => setTheme('light')}>
-                      Light
-                    </button>
-                  </div>
-                </div>
+                <p className="set-hint">Dark or light theme, page width and the sidebar are on the View tab.</p>
                 <div className="set-row">
                   <span className="set-label">Page font</span>
                   <select className="dialog-input" value={s.editorFont} onChange={(e) => updateSettings({ editorFont: e.target.value })}>
@@ -116,7 +104,7 @@ export function SettingsDialog({ theme, setTheme, onClose }: Props) {
                 <div className="set-row">
                   <span className="set-label">
                     App size
-                    <span className="set-hint">Makes the whole app (ribbon, sidebar, page) bigger or smaller. Page zoom is in the bar at the bottom.</span>
+                    <span className="set-hint">Makes everything bigger or smaller: ribbon, sidebar, menus and page. To zoom only the page, use the slider at the bottom right (or Ctrl+mouse wheel).</span>
                   </span>
                   <div className="segmented">
                     <button aria-label="Smaller" onClick={() => updateSettings({ appZoom: Math.max(0.6, Math.round((s.appZoom - 0.1) * 10) / 10) })}>
@@ -181,7 +169,7 @@ export function SettingsDialog({ theme, setTheme, onClose }: Props) {
                   disabled={!s.autocorrect}
                   onChange={(v) => updateSettings({ fixNearMisses: v })}
                 />
-                <Check label="Capitalise the first letter of sentences" checked={s.capitalizeSentences} onChange={(v) => updateSettings({ capitalizeSentences: v })} />
+                <Check label="Capitalize the first letter of sentences" checked={s.capitalizeSentences} onChange={(v) => updateSettings({ capitalizeSentences: v })} />
                 <h3>AutoFormat as you type</h3>
                 <Check label="Replace symbols" hint="(c) → ©   (tm) → ™   -- → –   -> → →   ... → …   1/2 → ½   != → ≠" checked={s.autoformat} onChange={(v) => updateSettings({ autoformat: v })} />
                 <Check label={'Use “smart” quotes'} hint={'"straight" → “curly”, and don\'t → don’t'} checked={s.smartQuotes} onChange={(v) => updateSettings({ smartQuotes: v })} />
@@ -266,6 +254,22 @@ export function SettingsDialog({ theme, setTheme, onClose }: Props) {
                       <li key={w}>
                         <span className="grow">{w}</span>
                         <button className="icon-btn" aria-label={`Remove ${w}`} onClick={() => updateSettings({ dictionary: s.dictionary.filter((x) => x !== w) })}>
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <h3>Ignored words</h3>
+                <p className="set-hint">Words you chose "Ignore" for, or whose automatic correction you undid with Ctrl+Z. They aren't underlined or corrected.</p>
+                {s.ignoredWords.length === 0 ? (
+                  <p className="set-empty">No ignored words.</p>
+                ) : (
+                  <ul className="set-list">
+                    {s.ignoredWords.map((w) => (
+                      <li key={w}>
+                        <span className="grow">{w}</span>
+                        <button className="icon-btn" aria-label={`Stop ignoring ${w}`} title="Check this word again" onClick={() => updateSettings({ ignoredWords: s.ignoredWords.filter((x) => x !== w) })}>
                           ×
                         </button>
                       </li>

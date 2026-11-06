@@ -21,9 +21,12 @@ interface Props {
   setMode(mode: PageMode): void
   theme: 'dark' | 'light'
   onOpenNotebook(): void
+  /** Same as selectedKey, except right after a page was renamed from its title (so the open editor stays). */
+  viewKey: string | null
+  onTitleChange(title: string): Promise<boolean>
 }
 
-export function PageView({ tree, selectedKey, select, startCreate, notify, mode, setMode, theme, onOpenNotebook }: Props) {
+export function PageView({ tree, selectedKey, select, startCreate, notify, mode, setMode, theme, onOpenNotebook, viewKey, onTitleChange }: Props) {
   const pageZoom = useSettings().pageZoom || 1
   // Where the editor / whiteboard show their "Saved" indicator.
   const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null)
@@ -63,53 +66,32 @@ export function PageView({ tree, selectedKey, select, startCreate, notify, mode,
 
   const ref = refOf(selectedKey)
   const kind = kindOf(selectedKey)
-  const crumbs = [
-    { key: ref.notebook, label: ref.notebook },
-    ...(ref.section ? [{ key: `${ref.notebook}/${ref.section}`, label: ref.section }] : []),
-    ...(ref.page ? [{ key: selectedKey, label: ref.page }] : [])
-  ]
-
   const isPage = kind === 'page'
   const boardMode = isPage && mode === 'board'
 
   return (
     <main className={`content${boardMode ? ' board-mode' : ''}`}>
-      <div className="page-bar">
-        <nav className="breadcrumb" aria-label="Location">
-          {crumbs.map((c, i) => (
-            <React.Fragment key={c.key}>
-              {i > 0 && <span className="crumb-sep">›</span>}
-              {i < crumbs.length - 1 ? (
-                <button className="crumb" onClick={() => select(c.key)}>
-                  {c.label}
-                </button>
-              ) : (
-                <span className="crumb current">{c.label}</span>
-              )}
-            </React.Fragment>
-          ))}
-        </nav>
-        {isPage && (
-          <>
-            <div className="status-slot" ref={setStatusSlot} />
-            <div className="mode-switch" role="tablist" aria-label="Page view">
-              <button role="tab" aria-selected={!boardMode} className={!boardMode ? 'selected' : ''} onClick={() => setMode('page')} title="Write on the page">
-                <PageModeIcon /> Page
-              </button>
-              <button role="tab" aria-selected={boardMode} className={boardMode ? 'selected' : ''} onClick={() => setMode('board')} title="Draw on this page's whiteboard">
-                <BoardMode /> Whiteboard
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+      {/* (Where you are shows in the notebook button, the section tab and the page list.) */}
+      {isPage && (
+        <div className="page-bar">
+          <div className="status-slot" ref={setStatusSlot} />
+          <div className="mode-switch" role="tablist" aria-label="Page view">
+            <button role="tab" aria-selected={!boardMode} className={!boardMode ? 'selected' : ''} onClick={() => setMode('page')} title="Write on the page">
+              <PageModeIcon /> Page
+            </button>
+            <button role="tab" aria-selected={boardMode} className={boardMode ? 'selected' : ''} onClick={() => setMode('board')} title="Draw on this page's whiteboard">
+              <BoardMode /> Whiteboard
+            </button>
+          </div>
+        </div>
+      )}
 
       {isPage ? (
         boardMode ? (
-          <Whiteboard key={selectedKey} notebook={ref.notebook} section={ref.section!} page={ref.page!} theme={theme} onError={notify} statusSlot={statusSlot} />
+          <Whiteboard key={viewKey ?? selectedKey} notebook={ref.notebook} section={ref.section!} page={ref.page!} theme={theme} onError={notify} statusSlot={statusSlot} />
         ) : (
           <article className="page" style={{ zoom: pageZoom }}>
-            <PageEditor key={selectedKey} notebook={ref.notebook} section={ref.section!} page={ref.page!} onError={notify} statusSlot={statusSlot} />
+            <PageEditor key={viewKey ?? selectedKey} notebook={ref.notebook} section={ref.section!} page={ref.page!} onError={notify} statusSlot={statusSlot} onTitleChange={onTitleChange} />
           </article>
         )
       ) : (
@@ -131,7 +113,9 @@ function FolderOverview({ tree, selectedKey, select, startCreate }: Pick<Props, 
           <NotebookIcon /> {nb.name}
         </h1>
         <p className="muted">
-          {nb.sections.length} section{nb.sections.length === 1 ? '' : 's'}
+          {nb.sections.length === 0
+            ? 'This notebook has no sections yet. Sections are the colored tabs above; each one holds pages.'
+            : `${nb.sections.length} section${nb.sections.length === 1 ? '' : 's'}`}
         </p>
         <div className="cards">
           {nb.sections.map((s) => (

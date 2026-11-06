@@ -211,13 +211,24 @@ export function HistoryDialog({ notebook, section, page, beforeRestore, notify, 
   const [versions, setVersions] = useState<PageVersion[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [text, setText] = useState('')
-  useEffect(() => {
-    void window.wiki.listVersions(notebook, section, page).then((r) => {
+  const [saved, setSaved] = useState(false)
+  const reload = () =>
+    window.wiki.listVersions(notebook, section, page).then((r) => {
       if (!r.ok) return notify(r.error.message)
       setVersions(r.data)
       if (r.data[0]) setSelected(r.data[0].id)
     })
+  useEffect(() => {
+    void reload()
   }, [notebook, section, page])
+  const saveNow = async () => {
+    await beforeRestore() // the version should include what was just typed
+    const r = await window.wiki.saveVersion(notebook, section, page)
+    if (!r.ok) return notify(r.error.message)
+    if (!r.data) return notify('The page is empty, so there is nothing to keep yet.')
+    setSaved(true)
+    await reload()
+  }
   useEffect(() => {
     if (!selected) return setText('')
     void window.wiki.readVersion(notebook, section, page, selected).then((r) => setText(r.ok ? r.data : r.error.message))
@@ -226,7 +237,7 @@ export function HistoryDialog({ notebook, section, page, beforeRestore, notify, 
   return (
     <Frame title={`History of "${page}"`} className="history-dialog" onClose={onClose}>
       {versions === null ? null : versions.length === 0 ? (
-        <p className="set-empty">No earlier versions yet. While you edit, a copy of the page is kept every 10 minutes (the last 50 are kept).</p>
+        <p className="set-empty">No earlier versions yet. While you edit, a copy of the page is kept every 10 minutes (the last 50 are kept), or use "Save a version now".</p>
       ) : (
         <div className="history-body">
           <ul className="history-list" role="listbox" aria-label="Versions">
@@ -245,13 +256,16 @@ export function HistoryDialog({ notebook, section, page, beforeRestore, notify, 
         </div>
       )}
       <div className="actions">
+        <button onClick={() => void saveNow()} title="Keep a copy of the page as it is right now">
+          {saved ? 'Saved ✓' : 'Save a version now'}
+        </button>
         <span className="muted small" style={{ flex: 1 }}>
           Restoring keeps the current text in the history too, so nothing is lost.
         </span>
         <button onClick={onClose}>Cancel</button>
         <button
           className="primary"
-          disabled={!selected}
+          disabled={!selected || !versions?.length}
           onClick={async () => {
             await beforeRestore()
             const r = await window.wiki.restoreVersion(notebook, section, page, selected!)
@@ -269,7 +283,7 @@ export function HistoryDialog({ notebook, section, page, beforeRestore, notify, 
 // ---------------------------------------------------------------- keyboard shortcuts
 
 const SHORTCUTS: [string, [string, string][]][] = [
-  ['Pages & sections', [['Ctrl+N', 'New page'], ['Ctrl+Shift+N', 'New section'], ['Ctrl+Page Down / Up', 'Next / previous page'], ['Ctrl+Tab / Ctrl+Shift+Tab', 'Next / previous section'], ['F2', 'Rename the selected page'], ['Delete', 'Delete the selected page (in the page list)'], ['Alt+↑ / Alt+↓', 'Move the selected page up / down']]],
+  ['Pages & sections', [['Ctrl+N', 'New page'], ['Alt+↑ / Alt+↓ (in File › Open)', 'Move a notebook up / down'], ['Ctrl+Shift+N', 'New section'], ['Ctrl+Page Down / Up', 'Next / previous page'], ['Ctrl+Tab / Ctrl+Shift+Tab', 'Next / previous section'], ['F2', 'Rename the selected page'], ['Delete', 'Delete the selected page (in the page list)'], ['Alt+↑ / Alt+↓', 'Move the selected page up / down']]],
   ['Writing', [['Ctrl+B / I / U', 'Bold / italic / underline'], ['Ctrl+Shift+S', 'Strikethrough'], ['Ctrl+E', 'Inline code'], ['Ctrl+Shift+H', 'Highlight'], ['Ctrl+Shift+L / E / R / J', 'Align left / center / right / justify'], ['/', 'Block menu (headings, lists, tables…)'], ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo (Ctrl+Z right after an automatic correction undoes just that)']]],
   ['Find & view', [['Ctrl+F', 'Find in page'], ['Ctrl+H', 'Find and replace'], ['Ctrl+= / Ctrl+− / Ctrl+0', 'Zoom the page in / out / 100%'], ['Ctrl+mouse wheel', 'Zoom the page']]],
   ['App', [['Ctrl+S', 'Save now (pages also save by themselves)'], ['Ctrl+,', 'Settings'], ['F1 or Ctrl+/', 'This list']]]

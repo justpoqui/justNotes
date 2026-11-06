@@ -6,8 +6,23 @@ import { NotebookIcon, Plus } from './Icons'
 import { InlineInput } from './InlineInput'
 import { moveInList, PAGE_DRAG, type Editing } from './Sidebar'
 
-/** Each section gets a colour from this list (by position), like coloured notebook dividers. */
-export const SECTION_COLORS = ['#5fb3a8', '#e5a26b', '#9ece6a', '#d887c4', '#d4a373', '#e0c46c', '#b39df3', '#f28b82']
+/** Colors for section tabs, like colored notebook dividers. A section keeps its color (saved in the notebook's .colors.json). */
+export const SECTION_COLORS = [
+  { name: 'Green', value: '#5fb3a8' },
+  { name: 'Orange', value: '#e5a26b' },
+  { name: 'Lime', value: '#9ece6a' },
+  { name: 'Pink', value: '#d887c4' },
+  { name: 'Tan', value: '#d4a373' },
+  { name: 'Yellow', value: '#e0c46c' },
+  { name: 'Purple', value: '#b39df3' },
+  { name: 'Red', value: '#f28b82' }
+]
+
+/** The first palette color no other section uses (or, if all are taken, the least used). */
+export function nextSectionColor(used: (string | undefined)[]): string {
+  const count = (v: string) => used.filter((u) => u === v).length
+  return [...SECTION_COLORS].sort((a, b) => count(a.value) - count(b.value))[0].value
+}
 
 interface Props {
   notebook: NotebookInfo | null
@@ -64,7 +79,7 @@ export function SectionTabs({ notebook, sectionKey, editing, select, startCreate
                 tabIndex={selected ? 0 : -1}
                 aria-selected={selected}
                 className={`section-tab${selected ? ' selected' : ''}`}
-                style={{ '--tab-color': SECTION_COLORS[i % SECTION_COLORS.length] } as React.CSSProperties}
+                style={{ '--tab-color': s.color ?? SECTION_COLORS[i % SECTION_COLORS.length].value } as React.CSSProperties}
                 onClick={() => !renaming && select(key)}
                 onDoubleClick={() => startRename(key)}
                 onKeyDown={(e) => {
@@ -117,7 +132,7 @@ export function SectionTabs({ notebook, sectionKey, editing, select, startCreate
                   if (order.join('/') !== list.join('/')) reorder(order)
                 }}
                 data-drop={dropAt?.key === key ? dropAt.side : undefined}
-                title={`${s.name} · ${s.pages.length} page${s.pages.length === 1 ? '' : 's'} (double-click to rename, drag to reorder, drop a page here to move it)`}
+                title={`${s.name} · ${s.pages.length} page${s.pages.length === 1 ? '' : 's'} (double-click to rename, drag to reorder, right-click to change its color, drop a page here to move it)`}
               >
                 {renaming ? (
                   <InlineInput initial={s.name} placeholder="section name" error={editing.error} onSubmit={submitEdit} onCancel={cancelEdit} />
@@ -128,7 +143,7 @@ export function SectionTabs({ notebook, sectionKey, editing, select, startCreate
             )
           })}
           {creating && (
-            <div className="section-tab selected" style={{ '--tab-color': SECTION_COLORS[notebook.sections.length % SECTION_COLORS.length] } as React.CSSProperties}>
+            <div className="section-tab selected" style={{ '--tab-color': nextSectionColor(notebook.sections.map((x) => x.color)) } as React.CSSProperties}>
               <InlineInput initial="" placeholder="New section" error={editing.error} onSubmit={submitEdit} onCancel={cancelEdit} />
             </div>
           )}

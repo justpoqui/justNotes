@@ -5,13 +5,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EngineError, Result, Tree } from '../../shared/types'
 import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog'
-import { ContextMenu, type MenuItem } from './components/ContextMenu'
+import { ContextMenu, type MenuItem, type MenuSwatches } from './components/ContextMenu'
 import { HistoryDialog, ShortcutsDialog, TemplateDialog, TrashDialog } from './components/Dialogs'
 import { MoveDialog } from './components/MoveDialog'
 import { NotebookDialog, type NotebookDialogMode } from './components/NotebookDialog'
 import { PageView } from './components/PageView'
 import { Ribbon, type PageMode } from './components/Ribbon'
-import { SectionTabs } from './components/SectionTabs'
+import { nextSectionColor, SECTION_COLORS, SectionTabs } from './components/SectionTabs'
 import { SettingsDialog } from './components/SettingsDialog'
 import { StatusBar } from './components/StatusBar'
 import { Sidebar, type Editing, type PageRow, type SidebarActions } from './components/Sidebar'
@@ -20,6 +20,7 @@ import { getSettings, updateSettings, useSettings } from './lib/settings'
 import { getActivePage } from './editor/activePage'
 import { ZOOM_MAX, ZOOM_MIN } from './components/StatusBar'
 import { load, save } from './lib/storage'
+import { WELCOME_NOTEBOOK, WELCOME_PAGE, WELCOME_SECTION, WELCOME_TEXT } from './lib/welcome'
 import { existsIn, isWithin, kindOf, nameOf, nearestExisting, parentOf, refOf, remapKey } from './lib/tree'
 
 const api = window.wiki
@@ -56,9 +57,9 @@ export function App() {
   const [trashOpen, setTrashOpen] = useState(false)
   const [historyFor, setHistoryFor] = useState<string | null>(null) // page key
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
-  // Recently opened and favourite pages (keys), remembered between runs.
+  // Recently opened and favorite pages (keys), remembered between runs.
   const [recent, setRecent] = useState<string[]>(() => load('jn.recent', []))
-  const [favourites, setFavourites] = useState<string[]>(() => load('jn.favourites', []))
+  const [favorites, setFavorites] = useState<string[]>(() => load('jn.favourites', []))
   const [moving, setMoving] = useState<string | null>(null) // page key being moved
   const [settingsOpen, setSettingsOpen] = useState(false)
   const settings = useSettings()
@@ -81,7 +82,7 @@ export function App() {
   useEffect(() => save('jn.lastSection', lastSection), [lastSection])
   useEffect(() => save('jn.lastPage', lastPage), [lastPage])
   useEffect(() => save('jn.recent', recent), [recent])
-  useEffect(() => save('jn.favourites', favourites), [favourites])
+  useEffect(() => save('jn.favourites', favorites), [favorites])
   useEffect(() => {
     save('jn.theme', theme)
     document.documentElement.dataset.theme = theme
@@ -147,9 +148,25 @@ export function App() {
       setToast(r.error.message)
       return null
     }
-    const t = r.data
+    let t = r.data
     const isFirstLoad = firstLoad.current // read now: the updater below runs later
     firstLoad.current = false
+    // The very first start: make a notebook with a short welcome page instead of an empty window.
+    if (isFirstLoad && !load('jn.welcomed', false)) {
+      save('jn.welcomed', true)
+      if (t.notebooks.length === 0) {
+        const nb = await api.createNotebook(WELCOME_NOTEBOOK)
+        const sec = nb.ok && (await api.createSection(WELCOME_NOTEBOOK, WELCOME_SECTION))
+        const page = sec && sec.ok && (await api.createPage(WELCOME_NOTEBOOK, WELCOME_SECTION, WELCOME_PAGE, WELCOME_TEXT))
+        const again = await api.listTree()
+        if (again.ok) t = again.data
+        if (page && page.ok) {
+          setTree(t)
+          setSelectedKey(`${WELCOME_NOTEBOOK}/${WELCOME_SECTION}/${WELCOME_PAGE}`)
+          return t
+        }
+      }
+    }
     setTree(t)
     setSelectedKey((k) => {
       if (k !== null) {
@@ -177,6 +194,9 @@ export function App() {
     root.setProperty('--editor-font', f ? (['serif', 'monospace', 'sans-serif'].includes(f) ? f : `'${f}', system-ui, sans-serif`) : 'inherit')
     root.setProperty('--editor-size', `${settings.editorFontSize}px`)
   }, [settings.editorFont, settings.editorFontSize])
+  useEffect(() => {
+    document.documentElement.dataset.pageWidth = settings.pageWidth
+  }, [settings.pageWidth])
 
   // App size (Settings → General) is remembered between runs.
   useEffect(() => {
@@ -254,6 +274,27 @@ export function App() {
     [section, sectionKey]
   )
 
+  // Every section keeps its own tab color (saved in the notebook folder), so dragging a
+  // tab doesn't change it. Sections without one get one here: existing notebooks keep
+  // the colors they had by position, new sections get a color no other section uses.
+  const coloring = useRef(false)
+  useEffect(() => {
+    if (!notebook || coloring.current || notebook.sections.every((s) => s.color)) return
+    coloring.current = true
+    const fresh = notebook.sections.every((s) => !s.color)
+    const used = notebook.sections.map((s) => s.color)
+    void (async () => {
+      for (const [i, s] of notebook.sections.entries()) {
+        if (s.color) continue
+        const color = fresh ? SECTION_COLORS[i % SECTION_COLORS.length].value : nextSectionColor(used)
+        used[i] = color
+        await api.setSectionColor(notebook.name, s.name, color)
+      }
+      await refresh()
+      coloring.current = false
+    })()
+  }, [notebook, refresh])
+
   /** Toast for a failed result; returns true if it succeeded. */
   const check = <T,>(r: Result<T>): r is { ok: true; data: T } => {
     if (!r.ok) setToast(r.error.message)
@@ -294,7 +335,7 @@ export function App() {
     setLastSection((prev) => remapRecord(prev, from, to))
     setLastPage((prev) => remapRecord(prev, from, to))
     setRecent((prev) => prev.map((k) => remapKey(k, from, to)))
-    setFavourites((prev) => prev.map((k) => remapKey(k, from, to)))
+    setFavorites((prev) => prev.map((k) => remapKey(k, from, to)))
   }
 
   const submitEdit = async (value: string, viaBlur: boolean) => {
@@ -372,7 +413,7 @@ export function App() {
         const parent = parentOf(key)
         return parent && t ? landing(t, parent) : null
       })
-      setFavourites((f) => f.filter((k) => !isWithin(k, key)))
+      setFavorites((f) => f.filter((k) => !isWithin(k, key)))
       setInfo(`Moved ${kind} "${nameOf(key)}" to the Recycle bin`, { label: 'Undo', run: () => void restore(id) })
     }
 
@@ -423,14 +464,14 @@ export function App() {
     if (check(r)) await refresh()
   }
 
-  const toggleFavourite = (key: string) => setFavourites((f) => (f.includes(key) ? f.filter((k) => k !== key) : [...f, key]))
+  const toggleFavorite = (key: string) => setFavorites((f) => (f.includes(key) ? f.filter((k) => k !== key) : [...f, key]))
 
-  /** Opens any page by key (from Recent / Favourites), switching notebook if needed. */
+  /** Opens any page by key (from Recent / Favorites), switching notebook if needed. */
   const openPage = (key: string) => {
     if (tree && existsIn(tree, key)) setSelectedKey(key)
     else {
       setRecent((r) => r.filter((k) => k !== key))
-      setFavourites((f) => f.filter((k) => k !== key))
+      setFavorites((f) => f.filter((k) => k !== key))
       setToast('That page no longer exists.')
     }
   }
@@ -466,6 +507,24 @@ export function App() {
     return null
   }
 
+  // ----- the page title was edited: rename the page to match (the editor stays open) -----
+  // keyAlias keeps the editor's React key the same across that rename, so it isn't reloaded.
+  const [keyAlias, setKeyAlias] = useState<Record<string, string>>({})
+  const renameFromTitle = async (key: string, title: string): Promise<boolean> => {
+    await flushAllSaves()
+    const { notebook: nb, section: sec, page } = refOf(key)
+    const r = await api.renamePage(nb, sec!, page!, title)
+    if (!r.ok) {
+      if (r.error.code === 'DUPLICATE') setInfo(`The title wasn't used as the page name: another page here is already called "${title}".`)
+      return false
+    }
+    const newKey = `${nb}/${sec}/${r.data}`
+    setKeyAlias((a) => ({ [newKey]: a[key] ?? key }))
+    remapAll(key, newKey)
+    await refresh()
+    return true
+  }
+
   const showInFolder = async (key: string) => void check(await api.showInFolder(refOf(key)))
   const openRootFolder = async () => void check(await api.openRootFolder())
 
@@ -480,7 +539,7 @@ export function App() {
     reorder: (names) => void reorder(sectionKey, names)
   }
 
-  const menuItems = (key: string | null): (MenuItem | 'sep')[] => {
+  const menuItems = (key: string | null): (MenuItem | MenuSwatches | 'sep')[] => {
     if (key === null) return [{ label: 'Open notebook…', onClick: () => setNotebookDialog({ mode: 'open' }) }]
     const kind = kindOf(key)
     if (kind === 'notebook') {
@@ -494,12 +553,19 @@ export function App() {
       ]
     }
     const secKey = kind === 'section' ? key : parentOf(key)!
-    const items: (MenuItem | 'sep')[] = [
+    const items: (MenuItem | MenuSwatches | 'sep')[] = [
       { label: 'New page', shortcut: 'Ctrl+N', onClick: () => startCreate(secKey) },
       { label: 'New page from template…', onClick: () => setTemplateFor(secKey) }
     ]
     if (kind === 'section') {
-      items.push({ label: 'New section', onClick: () => startCreate(parentOf(key)) }, 'sep', { label: 'Rename', shortcut: 'F2', onClick: () => startRename(key) })
+      const { notebook: nbName, section: secName } = refOf(key)
+      const current = tree?.notebooks.find((n) => n.name === nbName)?.sections.find((x) => x.name === secName)?.color
+      items.push({ label: 'New section', onClick: () => startCreate(parentOf(key)) }, 'sep', { label: 'Rename', shortcut: 'F2', onClick: () => startRename(key) }, 'sep', {
+        label: 'Section color',
+        swatches: SECTION_COLORS,
+        current,
+        onPick: (c) => void api.setSectionColor(nbName, secName!, c).then((r) => void (check(r) && refresh()))
+      })
     } else {
       items.push(
         'sep',
@@ -507,7 +573,7 @@ export function App() {
         { label: 'Duplicate', onClick: () => void duplicate(key) },
         { label: 'Move…', onClick: () => setMoving(key) },
         { label: 'Page history…', onClick: () => setHistoryFor(key) },
-        { label: favourites.includes(key) ? 'Remove from Favourites' : 'Add to Favourites', onClick: () => toggleFavourite(key) }
+        { label: favorites.includes(key) ? 'Remove from Favorites' : 'Add to Favorites', onClick: () => toggleFavorite(key) }
       )
     }
     items.push({ label: 'Show in file manager', onClick: () => void showInFolder(key) }, 'sep', {
@@ -571,7 +637,6 @@ export function App() {
         startCreate={startCreate}
         onOpenNotebook={() => setNotebookDialog({ mode: 'open' })}
         onRenameNotebook={() => notebook && startRename(notebook.name)}
-        onDeleteNotebook={() => notebook && void remove(notebook.name)}
         onRevealNotebook={() => notebook && void showInFolder(notebook.name)}
         onOpenSettings={() => setSettingsOpen(true)}
         onShortcuts={() => setShortcutsOpen(true)}
@@ -579,7 +644,6 @@ export function App() {
         onRestoreBackup={() => void restoreBackup()}
         onTrash={() => setTrashOpen(true)}
         onHistory={() => selectedKind === 'page' && selectedKey && setHistoryFor(selectedKey)}
-        onDuplicate={() => selectedKind === 'page' && selectedKey && void duplicate(selectedKey)}
         onTemplate={() => sectionKey && setTemplateFor(sectionKey)}
         onSnapshot={() => void snapshotToPage()}
         sidebarVisible={sidebarVisible}
@@ -589,9 +653,9 @@ export function App() {
         openRootFolder={() => void openRootFolder()}
         revealPage={() => selectedKey && void showInFolder(selectedKey)}
         recent={tree ? recent.filter((k) => existsIn(tree, k) && k !== selectedKey) : []}
-        favourites={tree ? favourites.filter((k) => existsIn(tree, k)) : []}
-        isFavourite={!!selectedKey && favourites.includes(selectedKey)}
-        toggleFavourite={() => selectedKind === 'page' && selectedKey && toggleFavourite(selectedKey)}
+        favorites={tree ? favorites.filter((k) => existsIn(tree, k)) : []}
+        isFavorite={!!selectedKey && favorites.includes(selectedKey)}
+        toggleFavorite={() => selectedKind === 'page' && selectedKey && toggleFavorite(selectedKey)}
         openPage={openPage}
       />
       <SectionTabs
@@ -628,6 +692,8 @@ export function App() {
           setMode={setMode}
           theme={theme}
           onOpenNotebook={() => setNotebookDialog({ mode: 'open' })}
+          viewKey={selectedKey ? (keyAlias[selectedKey] ?? selectedKey) : null}
+          onTitleChange={(title) => (selectedKey && selectedKind === 'page' ? renameFromTitle(selectedKey, title) : Promise.resolve(false))}
         />
       </div>
 
@@ -644,10 +710,11 @@ export function App() {
           onCreate={createNotebook}
           onRename={renameNotebook}
           setMode={setNotebookDialog}
+          onReorder={(names) => void api.setNotebookOrder(names).then((r) => void (check(r) && refresh()))}
           onClose={() => setNotebookDialog(null)}
         />
       )}
-      {settingsOpen && <SettingsDialog theme={theme} setTheme={setTheme} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {moving && tree && (
         <MoveDialog tree={tree} pageKey={moving} onMove={(nb, sec) => movePage(moving, nb, sec)} onClose={() => setMoving(null)} />
       )}

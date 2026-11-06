@@ -1,6 +1,6 @@
 # justNotes
 
-A local-first notebook for Linux. Your notes are plain Markdown files in folders, organised OneNote-style as **Notebook → Section → Page**. Pages are edited in a modern block editor and each page can have a whiteboard. There are no accounts and no cloud, and the app never connects to the internet.
+A local-first notebook for Linux. Your notes are plain Markdown files in folders, organized OneNote-style as **Notebook → Section → Page**. Pages are edited in a modern block editor and each page can have a whiteboard. There are no accounts and no cloud, and the app never connects to the internet.
 
 ```
 ~/Documents/justNotes/<Notebook>/<Section>/<Page>.md            ← the page (plain Markdown)
@@ -25,66 +25,76 @@ Your notes stay readable without the app: open any `.md` file in a text editor o
 
 - **One notebook is open at a time.**
   - Switch notebooks with **File → Open** or the **Notebook: name ▾** button.
-  - **File** also has New, Rename, Delete, **Back up** (save the notebook as a `.zip`) and **Restore** (add a notebook from a backup).
-- **Sections are coloured tabs** under the ribbon:
+  - **File** also has New notebook, Rename, **Back up** (save the notebook as a `.zip`) and **Restore backup** (add a notebook from a backup). To delete a notebook, right-click the **Notebook** button.
+  - In **File → Open**, drag notebooks (or use **Alt+↑/↓**) to put them in the order you like.
+  - The very first time justNotes starts, it makes **My Notebook** with a short welcome page.
+- **Sections are colored tabs** under the ribbon:
   - **+** adds a section, double-click renames one, and dragging a tab reorders it.
+  - Each section keeps its color. Right-click a tab to pick another one.
   - Drop a page onto a tab to move the page there.
 - **The sidebar lists the pages** of the selected section:
   - Drag pages, or use **Alt+↑/↓**, to reorder them.
   - Double-click or **F2** renames a page.
-  - Right-click a page for **Duplicate**, **Move…**, **Page history…**, **Add to Favourites** and more.
+  - Right-click a page for **Duplicate**, **Move…**, **Page history…**, **Add to Favorites** and more.
+  - The heading at the top of a page is its name: change it, click elsewhere, and the page (and its file) is renamed to match.
 - **New pages:** **Ctrl+N** for a blank page, or **Insert → From template** for meeting notes, daily journal, to-do list, project plan or study notes.
 - **Recycle bin:** deleting moves things to **File → Recycle bin**, where they're kept for 30 days. A deleted page can also be brought back with **Undo** on the notice that appears.
-- **Page history:** while you edit, a copy of the page is kept every 10 minutes, and the last 50 copies are kept. Use **File → History** to preview and restore an earlier version.
-- **Recent and Favourite pages:** **View → Recent / Favourites**. **Star page** adds the open page to Favourites.
+- **Page history:** while you edit, a copy of the page is kept every 10 minutes, and the last 50 copies are kept. Use **View → Page history** to preview and restore an earlier version, or to **Save a version now**.
+- **Recent and Favorite pages:** **View → Recent / Favorites**. **View → Add to Favorites** adds the open page.
 
 ### Writing
 
 - Type **/** for blocks: headings, to-do lists, bullets, numbers, quotes, code, tables, dividers and pictures. Markdown shortcuts work too (`# `, `- `, `[ ] `, ```` ``` ````, `**bold**`).
 - **Home tab:**
-  - font, size, bold/italic/underline/strike, text colour, highlight
+  - font, size, bold/italic/underline/strike, text color, highlight
   - lists, indent, alignment, styles, **Find & Replace**
 - **Selecting text** shows a small toolbar with the most-used formatting.
 - **Pictures:** paste, drag in, or use Insert → Picture. They're stored in the section's `assets/` folder.
+  - Click a picture to show the **Picture** tab (Small / Medium / Large / Original size, Left / Center / Right), or drag the handle at its corner to resize it.
+- **Tables:** with the cursor in a table, the **Table** tab adds and deletes rows and columns, switches the header row on or off, and deletes the table.
 - **Spell-check** (English US or UK, offline). Right-click a word for suggestions, **Add to dictionary** or **Ignore**.
 - **AutoCorrect** fixes common typos (teh → the), your own replacements, and words one letter off from exactly one real word.
 - **AutoFormat** turns (c) into ©, -- into –, -> into →, ... into … and straight quotes into “curly” ones.
-- **Ctrl+Z straight after any automatic change** puts back exactly what you typed.
+- **Ctrl+Z straight after any automatic change** puts back exactly what you typed. That word is then left alone (see Settings → Dictionary → Ignored words).
+- **Undo** goes back a word at a time.
 - Pages **save by themselves** shortly after you stop typing. They also save when you switch pages and when you close the app, and Ctrl+S saves immediately.
 
 ### Whiteboard
 
 - Each page has a whiteboard: use the **Page / Whiteboard** switch above the page.
-- The **Draw** tab has the drawing tools.
+- The **Draw** tab has the drawing tools, and opens by itself when you switch to the whiteboard.
+- The whiteboard has its own undo, redo and zoom (bottom-left of the board).
 - **Draw → Add to page** puts a picture of the whiteboard at the end of the page.
 
 ### Status bar, view and settings
 
 - **Status bar** (bottom): word and character counts, undo/redo, and **page zoom**. Ctrl+= / Ctrl+− / Ctrl+0 and Ctrl+mouse wheel also zoom the page.
-- **View tab:** sidebar on/off, dark/light theme, Recent, Favourites.
+- **View tab:** sidebar on/off, **Wide page**, dark/light theme, Recent, Favorites, Add to Favorites and Page history.
 - **File → Settings** (Ctrl+,):
-  - app size, page font and text size, autosave timing
+  - app size (everything bigger or smaller), page font and text size, autosave timing
   - spell-check language and every proofing option
-  - your AutoCorrect list and personal dictionary
+  - your AutoCorrect list, personal dictionary and ignored words
 - **F1** shows all keyboard shortcuts.
-- **Export PDF** (File tab) saves the open page as a clean, printable PDF.
+- **File → Page as PDF** saves the open page as a clean, printable PDF.
 
 ## How your files are stored
 
 | What | Saved in the `.md` file as |
 |---|---|
 | Normal text, headings, lists, to-dos, tables, code, links, pictures | Standard Markdown |
-| Highlight | `==text==` (coloured highlights: `<mark style="…">`) |
-| Font, size, text colour | `<span style="…">text</span>` |
+| Picture width | `![alt\|300](assets/picture.png)` (the same as Obsidian) |
+| Highlight | `==text==` (colored highlights: `<mark style="…">`) |
+| Font, size, text color | `<span style="…">text</span>` |
 | Underline | `<u>text</u>` |
-| Centered / right-aligned paragraph | `<div align="center">` around normal Markdown |
+| Centered / right-aligned paragraph or picture | `<div align="center">` around normal Markdown |
 | `[[Wiki links]]` from other apps | Kept exactly as written |
 
 **Hidden bookkeeping** (all inside your notes folder):
 
 | File or folder | What it holds |
 |---|---|
-| `.order.json` | Your custom section and page order |
+| `.order.json` | Your custom notebook, section and page order |
+| `<Notebook>/.colors.json` | Section tab colors |
 | `<Section>/.history/` | Page history |
 | `.trash/` | The recycle bin |
 

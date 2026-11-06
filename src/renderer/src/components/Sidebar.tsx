@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import type { Kind } from '../lib/tree'
 import { Dots, PageIcon, Plus } from './Icons'
 import { InlineInput } from './InlineInput'
+import { BoardMode } from './RibbonIcons'
 
 export type Editing =
   | { mode: 'rename'; key: string; error: string | null }
@@ -151,7 +152,7 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
           </div>
         )}
 
-        {!sectionKey && <div className="tree-empty">Add a section (the <b>+</b> next to the section tabs) to start writing pages.</div>}
+        {!sectionKey && <div className="tree-empty">No sections yet.</div>}
         {sectionKey && pages.length === 0 && !creating && (
           <div className="tree-empty">
             <p>No pages in this section yet.</p>
@@ -219,8 +220,8 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
                 <>
                   <span className="name">{p.name}</span>
                   {p.hasCanvas && (
-                    <span className="badge" title="This page has a whiteboard">
-                      ✎
+                    <span className="badge" title="This page has a whiteboard drawing" aria-label="has a whiteboard">
+                      <BoardMode />
                     </span>
                   )}
                   <span className="row-actions">

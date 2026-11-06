@@ -28,6 +28,8 @@ export function getSpellChecker(): SpellChecker {
     instance = lang === 'en-GB' ? nspell(affGB, dicGB) : nspell(affUS, dicUS)
     instanceLang = lang
     added = new Set()
+    // Words used by the app itself (its name, key names) shouldn't be underlined.
+    for (const w of BUILT_IN_WORDS) instance.add(w)
     syncPersonal()
     if (!subscribed) {
       subscribed = true
@@ -36,6 +38,8 @@ export function getSpellChecker(): SpellChecker {
   }
   return instance
 }
+
+const BUILT_IN_WORDS = ['justNotes', 'Ctrl', 'Alt', 'Esc', 'Markdown', 'Excalidraw', 'whiteboard', 'whiteboards']
 
 const WORD = /^[\p{L}][\p{L}'’]*$/u
 

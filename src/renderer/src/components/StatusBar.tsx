@@ -25,15 +25,17 @@ function useEditorTick(editor: Editor | null) {
 }
 
 export function StatusBar({ mode, hasPage }: { mode: PageMode; hasPage: boolean }) {
-  const { editor, board, stats } = useActivePage()
+  const { editor, stats } = useActivePage()
   const settings = useSettings()
   useEditorTick(editor)
 
   const ed = editor && !editor.isDestroyed && mode === 'page' ? editor : null
-  const onBoard = mode === 'board' && !!board
-  const canRedo = ed ? ed.isEditable && ed.can().redo() : onBoard
+  const canRedo = !!ed && ed.isEditable && ed.can().redo()
   const zoom = settings.pageZoom || 1
-  const setZoom = (z: number) => updateSettings({ pageZoom: Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)) * 100) / 100 })
+  const setZoom = (z: number) =>
+    updateSettings({
+      pageZoom: Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)) * 100) / 100
+    })
   const step = (dir: 1 | -1) => {
     const next = dir > 0 ? ZOOM_STEPS.find((s) => s > zoom + 0.001) : [...ZOOM_STEPS].reverse().find((s) => s < zoom - 0.001)
     setZoom(next ?? zoom)
@@ -53,51 +55,52 @@ export function StatusBar({ mode, hasPage }: { mode: PageMode; hasPage: boolean 
             </span>
           </>
         )}
-        {hasPage && mode === 'board' && <span>Whiteboard</span>}
+        {hasPage && mode === 'board' && <span>Whiteboard · undo, redo and zoom are at the bottom-left of the board</span>}
       </div>
 
-      <div className="sb-right">
-        <button
-          className="sb-btn"
-          title="Undo (Ctrl+Z)"
-          aria-label="Undo"
-          // (enabled for any editable page: Ctrl+Z may also revert an automatic correction)
-          disabled={ed ? !ed.isEditable : !onBoard}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => (ed ? ed.commands.revertAutoChange() || ed.chain().focus().undo().run() : board?.undo())}
-        >
-          <Ic.Undo />
-        </button>
-        <button className="sb-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled={!canRedo} onMouseDown={(e) => e.preventDefault()} onClick={() => (ed ? ed.chain().focus().redo().run() : board?.redo())}>
-          <Ic.Redo />
-        </button>
+      {mode !== 'board' && (
+        <div className="sb-right">
+          <button
+            className="sb-btn"
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+            // (enabled for any editable page: Ctrl+Z may also revert an automatic correction)
+            disabled={!ed || !ed.isEditable}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => ed && (ed.commands.revertAutoChange() || ed.chain().focus().undo().run())}
+          >
+            <Ic.Undo />
+          </button>
+          <button className="sb-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled={!canRedo} onMouseDown={(e) => e.preventDefault()} onClick={() => ed?.chain().focus().redo().run()}>
+            <Ic.Redo />
+          </button>
 
-        <span className="sb-sep" />
+          <span className="sb-sep" />
 
-        <div className={`sb-zoom${mode === 'board' ? ' disabled' : ''}`} title={mode === 'board' ? 'The whiteboard has its own zoom (bottom-left of the board)' : 'Page zoom'}>
-          <button className="sb-btn" aria-label="Zoom out" title="Zoom out" disabled={mode === 'board' || zoom <= ZOOM_MIN} onClick={() => step(-1)}>
-            −
-          </button>
-          <input
-            type="range"
-            className="sb-slider"
-            aria-label="Page zoom"
-            min={ZOOM_MIN * 100}
-            max={ZOOM_MAX * 100}
-            step={5}
-            value={Math.round(zoom * 100)}
-            disabled={mode === 'board'}
-            onChange={(e) => setZoom(Number(e.target.value) / 100)}
-            onDoubleClick={() => setZoom(1)}
-          />
-          <button className="sb-btn" aria-label="Zoom in" title="Zoom in" disabled={mode === 'board' || zoom >= ZOOM_MAX} onClick={() => step(1)}>
-            +
-          </button>
-          <button className="sb-pct" title="Reset to 100%" aria-label={`Zoom ${Math.round(zoom * 100)}%, click to reset`} disabled={mode === 'board'} onClick={() => setZoom(1)}>
-            {Math.round(zoom * 100)}%
-          </button>
+          <div className="sb-zoom" title="Page zoom (only the page; to make the whole app bigger, see Settings ▸ App size)">
+            <button className="sb-btn" aria-label="Zoom out" title="Zoom out" disabled={zoom <= ZOOM_MIN} onClick={() => step(-1)}>
+              −
+            </button>
+            <input
+              type="range"
+              className="sb-slider"
+              aria-label="Page zoom"
+              min={ZOOM_MIN * 100}
+              max={ZOOM_MAX * 100}
+              step={5}
+              value={Math.round(zoom * 100)}
+              onChange={(e) => setZoom(Number(e.target.value) / 100)}
+              onDoubleClick={() => setZoom(1)}
+            />
+            <button className="sb-btn" aria-label="Zoom in" title="Zoom in" disabled={zoom >= ZOOM_MAX} onClick={() => step(1)}>
+              +
+            </button>
+            <button className="sb-pct" title="Reset to 100%" aria-label={`Zoom ${Math.round(zoom * 100)}%, click to reset`} onClick={() => setZoom(1)}>
+              {Math.round(zoom * 100)}%
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </footer>
   )
 }

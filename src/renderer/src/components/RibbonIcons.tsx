@@ -68,3 +68,23 @@ export const StarFilled = () => (
     <path d="m10 3 2.1 4.4 4.9.6-3.6 3.4.9 4.8L10 13.9l-4.3 2.3.9-4.8L3 8l4.9-.6z" />
   </svg>
 )
+
+// Show the page's file in the file manager (a page with an arrow).
+export const FileReveal = I(<><path d="M11 3H6a1.5 1.5 0 0 0-1.5 1.5v11A1.5 1.5 0 0 0 6 17h8a1.5 1.5 0 0 0 1.5-1.5V7.5Z" /><path d="M11 3v4.5h4.5" /><path d="M8 12.5h4.5M10.8 10.8l1.7 1.7-1.7 1.7" /></>)
+// All notebooks: a stack of folders.
+export const Folders = I(<><path d="M5 6.5V5.2A1.2 1.2 0 0 1 6.2 4h2.6l1.4 1.5h5.6A1.2 1.2 0 0 1 17 6.7v6.1" /><path d="M3 8.7A1.2 1.2 0 0 1 4.2 7.5h2.6l1.4 1.5h5.6A1.2 1.2 0 0 1 15 10.2v4.6a1.2 1.2 0 0 1-1.2 1.2H4.2A1.2 1.2 0 0 1 3 14.8Z" /></>)
+// Table editing
+const Grid = <><rect x="3" y="3.5" width="14" height="13" rx="1.5" /></>
+export const RowAbove = I(<>{Grid}<path d="M3 10h14M10 10v6.5" /><path d="M10 5.2v3M8.5 6.7h3" /></>)
+export const RowBelow = I(<>{Grid}<path d="M3 10h14M10 3.5V10" /><path d="M10 11.8v3M8.5 13.3h3" /></>)
+export const ColLeft = I(<>{Grid}<path d="M10 3.5v13M10 10h7" /><path d="M6.5 8.5v3M5 10h3" /></>)
+export const ColRight = I(<>{Grid}<path d="M10 3.5v13M3 10h7" /><path d="M13.5 8.5v3M12 10h3" /></>)
+export const DeleteRow = I(<>{Grid}<path d="M3 8h14M3 12h14" /><path d="m8.5 8.8 3 2.4m0-2.4-3 2.4" /></>)
+export const DeleteCol = I(<>{Grid}<path d="M8 3.5v13M12 3.5v13" /><path d="m8.8 8.5 2.4 3m0-3-2.4 3" /></>)
+export const HeaderRow = I(<>{Grid}<path d="M3 7.5h14M3 11.5h14M8 7.5v9" /><rect x="3" y="3.5" width="14" height="4" rx="1" fill="currentColor" stroke="none" opacity=".35" /></>)
+export const DeleteTable = I(<>{Grid}<path d="M3 8h14M8 3.5v13" /><path d="m11 10.5 3.5 3.5m0-3.5L11 14" /></>)
+// Picture size
+export const PicSmall = I(<><rect x="3" y="3" width="14" height="14" rx="1.5" strokeDasharray="2 2" /><rect x="5.5" y="9" width="5.5" height="5.5" rx="1" /></>)
+export const PicMedium = I(<><rect x="3" y="3" width="14" height="14" rx="1.5" strokeDasharray="2 2" /><rect x="5" y="6.5" width="8.5" height="8.5" rx="1" /></>)
+export const PicLarge = I(<><rect x="3" y="3" width="14" height="14" rx="1.5" /><path d="m5.5 14 3.5-4 2.5 2.5 1.5-1.5 2 3" /><circle cx="12.5" cy="7" r="1" /></>)
+export const PageWidth = I(<><path d="M5 3.5v13M15 3.5v13" /><path d="M7.5 10h5M9 8.3 7.3 10 9 11.7M11 8.3l1.7 1.7-1.7 1.7" /></>)

@@ -13,7 +13,7 @@ const ASCII_PUNCT = /[!-/:-@[-`{-~]/
 const ENTITY: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;' }
 
 /**
- * For text inside an HTML tag the editor writes (coloured / sized / underlined text):
+ * For text inside an HTML tag the editor writes (colored / sized / underlined text):
  * it's read back as HTML, but Markdown still scans it first, so characters that would
  * look like Markdown (==, *, _, `, [, ...) are written as HTML character codes,
  * which turn back into exactly the same characters.
