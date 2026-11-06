@@ -1,5 +1,5 @@
 /* Dark is the default theme: soft greys rather than black, off-white text,
-   and a gentle blue accent, for long reading/writing sessions. */
+   and the green of the app icon as the accent, for long reading/writing sessions. */
 :root {
   color-scheme: dark;
   --bg: #1f2023;
@@ -11,17 +11,22 @@
   --muted: #8e9095;
   --border: #303237;
   --hover: rgba(255, 255, 255, 0.055);
-  --selected: rgba(138, 170, 240, 0.17);
-  --accent: #8aaaf0;
-  --on-accent: #10141d;
+  --selected: rgba(123, 193, 186, 0.16);
+  /* The icon's green (#1f4844) is too dark to read on the dark theme, so text,
+     icons and outlines use a lighter shade of the same green; filled buttons use
+     the icon green itself. */
+  --brand: #1f4844;
+  --on-brand: #ece5d8;
+  --accent: #7bc1ba;
+  --on-accent: #10201e;
   --danger: #ee7d70;
   --on-danger: #1d1110;
   --menu-bg: #2a2b30;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   --code-bg: #26282c;
   --quote: #474a50;
-  --link: #9fb9f4;
-  --wiki-bg: rgba(138, 170, 240, 0.14);
+  --link: #90cbc5;
+  --wiki-bg: rgba(123, 193, 186, 0.14);
   --hl-keyword: #c792ea; --hl-string: #a5d394; --hl-number: #e3a774; --hl-comment: #7c8088;
   --hl-title: #82aaff; --hl-attr: #e6c47f; --hl-built: #6fc4cf;
 }
@@ -36,8 +41,10 @@
   --muted: #74746f;
   --border: #e2e2de;
   --hover: rgba(0, 0, 0, 0.05);
-  --selected: rgba(59, 111, 216, 0.13);
-  --accent: #3b6fd8;
+  --selected: rgba(31, 72, 68, 0.12);
+  --brand: #1f4844;
+  --on-brand: #ffffff;
+  --accent: #1f4844;
   --on-accent: #ffffff;
   --danger: #c0392b;
   --on-danger: #ffffff;
@@ -45,8 +52,8 @@
   --shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
   --code-bg: #f4f4f1;
   --quote: #d6d6d0;
-  --link: #2f62c9;
-  --wiki-bg: rgba(59, 111, 216, 0.1);
+  --link: #2b6b64;
+  --wiki-bg: rgba(31, 72, 68, 0.1);
   --hl-keyword: #a626a4; --hl-string: #50a14f; --hl-number: #986801; --hl-comment: #a0a1a7;
   --hl-title: #4078f2; --hl-attr: #c18401; --hl-built: #0184bc;
 }
@@ -64,7 +71,7 @@ button {
   border-radius: 6px; padding: 4px 12px; cursor: pointer;
 }
 button:hover { background: var(--hover); }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+button.primary { background: var(--brand); border-color: var(--accent); color: var(--on-brand); }
 button.primary:hover { filter: brightness(1.08); }
 button.danger-fill { background: var(--danger); border-color: var(--danger); color: var(--on-danger); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -322,7 +329,8 @@ button.danger-fill { background: var(--danger); border-color: var(--danger); col
 /* ---------- ribbon ---------- */
 .ribbon { flex: none; background: var(--ribbon-bg); border-bottom: 1px solid var(--border); user-select: none; }
 .rb-tabs { display: flex; align-items: flex-end; gap: 2px; padding: 0 10px; background: var(--ribbon-tabs-bg); height: 34px; }
-.app-name { font-weight: 650; font-size: 13px; color: var(--accent); align-self: center; padding: 0 14px 0 6px; letter-spacing: 0.01em; }
+.app-name { display: flex; align-items: center; gap: 7px; font-weight: 650; font-size: 13px; color: var(--accent); align-self: center; padding: 0 14px 0 6px; letter-spacing: 0.01em; }
+.app-name img { width: 20px; height: 20px; flex: none; }
 .rb-tab {
   border: none; border-radius: 6px 6px 0 0; padding: 6px 16px 7px; font-size: 13px; color: var(--muted);
 }
@@ -374,6 +382,12 @@ button.danger-fill { background: var(--danger); border-color: var(--danger); col
 
 /* Excalidraw sits inside our layout */
 .board .excalidraw { --zIndex-layerUI: 4; }
+/* Whiteboard tools in the app's green instead of Excalidraw's purple. */
+.board .excalidraw, .board .excalidraw.theme--dark {
+  --color-primary: var(--accent); --color-primary-darker: var(--accent); --color-primary-darkest: var(--accent);
+  --color-primary-light: var(--selected); --color-primary-hover: var(--accent); --color-on-primary-container: var(--fg);
+  --color-surface-primary-container: var(--selected); --color-brand-hover: var(--accent); --color-brand-active: var(--accent);
+}
 
 /* ---------- notebook + section tabs (under the ribbon) ---------- */
 .section-bar {

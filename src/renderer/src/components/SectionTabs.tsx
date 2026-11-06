@@ -7,7 +7,7 @@ import { InlineInput } from './InlineInput'
 import { moveInList, PAGE_DRAG, type Editing } from './Sidebar'
 
 /** Each section gets a colour from this list (by position), like coloured notebook dividers. */
-export const SECTION_COLORS = ['#7aa2f7', '#e5a26b', '#9ece6a', '#d887c4', '#5fc4c0', '#e0c46c', '#b39df3', '#f28b82']
+export const SECTION_COLORS = ['#5fb3a8', '#e5a26b', '#9ece6a', '#d887c4', '#d4a373', '#e0c46c', '#b39df3', '#f28b82']
 
 interface Props {
   notebook: NotebookInfo | null

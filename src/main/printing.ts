@@ -26,7 +26,7 @@ const PRINT_CSS = `
   ul[data-type="taskList"] li > label { flex: none; }
   ul[data-type="taskList"] li[data-checked="true"] > div { text-decoration: line-through; color: #777; }
   mark { background: #f6e58d; padding: 0 2px; }
-  .wiki-link { color: #2f62c9; }
+  .wiki-link { color: #2b6b64; }
   hr { border: none; border-top: 1px solid #ccc; margin: 1.2em 0; }
 `
 

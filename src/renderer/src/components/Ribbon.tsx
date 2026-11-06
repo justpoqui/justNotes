@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useActivePage, type BoardControls } from '../editor/activePage'
 import { load, save } from '../lib/storage'
 import * as Ic from './RibbonIcons'
+import logo from '../assets/logo.png'
 
 export type PageMode = 'page' | 'board'
 type Tool = Parameters<BoardControls['setTool']>[0]
@@ -189,7 +190,10 @@ export function Ribbon(props: Props) {
   return (
     <header className="ribbon">
       <div className="rb-tabs" role="tablist">
-        <span className="app-name">justNotes</span>
+        <span className="app-name">
+          <img src={logo} alt="" draggable={false} />
+          justNotes
+        </span>
         {TABS.map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className={`rb-tab${tab === t ? ' selected' : ''}`} onClick={() => setTab(t)}>
             {t}
