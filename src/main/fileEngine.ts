@@ -7,10 +7,13 @@
 // notes stay readable without the app.
 
 import { randomUUID } from 'node:crypto'
+import { strToU8, unzipSync, zipSync, type Zippable } from 'fflate'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type {
   DeleteOptions,
+  PageVersion,
+  TrashItem,
   EngineError,
   ErrorCode,
   ItemRef,
@@ -27,6 +30,15 @@ const MAX_NAME_LENGTH = 120
 export const ASSETS_DIR = 'assets'
 export const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif'])
 const MAX_ASSET_BYTES = 25 * 1024 * 1024
+/** Hidden folders / files the app keeps inside the notes folder. */
+export const TRASH_DIR = '.trash'
+export const HISTORY_DIR = '.history'
+export const ORDER_FILE = '.order.json'
+const TRASH_KEEP_DAYS = 30
+const HISTORY_EVERY_MS = 10 * 60 * 1000
+const HISTORY_KEEP = 50
+const VERSION_ID = /^\d{8}-\d{6}(-\d+)?\.md$/
+const TRASH_ID = /^\d{13}-[0-9a-f]{8}$/
 
 /**
  * A unique hidden temp file next to `file` (saves write here first, then rename
@@ -100,6 +112,19 @@ const sameName = (a: string, b: string): boolean => a.localeCompare(b, undefined
 const byName = (a: { name: string }, b: { name: string }): number =>
   a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
 
+/** Items listed in `order` come first, in that order; anything else follows alphabetically. */
+function sortByOrder<T extends { name: string }>(items: T[], order: string[]): T[] {
+  const rank = new Map(order.map((n, i) => [n, i]))
+  return [...items].sort((a, b) => {
+    const ra = rank.get(a.name)
+    const rb = rank.get(b.name)
+    if (ra !== undefined && rb !== undefined) return ra - rb
+    if (ra !== undefined) return -1
+    if (rb !== undefined) return 1
+    return byName(a, b)
+  })
+}
+
 function wrapIo(err: unknown, what: string): never {
   if (err instanceof EngineFailure) throw err
   const e = err as NodeJS.ErrnoException
@@ -116,7 +141,11 @@ export class FileEngine {
     this.root = path.resolve(root)
     // Changes to the folder structure run one at a time, so two at once can't both pass
     // the duplicate-name check (e.g. "Ideas" and "ideas" created in the same instant).
-    for (const m of ['createNotebook', 'renameNotebook', 'deleteNotebook', 'createSection', 'renameSection', 'deleteSection', 'createPage', 'renamePage', 'movePage', 'deletePage'] as const) {
+    for (const m of [
+      'createNotebook', 'renameNotebook', 'deleteNotebook', 'createSection', 'renameSection', 'deleteSection',
+      'createPage', 'renamePage', 'movePage', 'deletePage', 'duplicatePage', 'setOrder', 'restoreFromTrash',
+      'emptyTrash', 'importNotebook', 'restoreVersion'
+    ] as const) {
       const original = (this[m] as (...args: unknown[]) => Promise<unknown>).bind(this)
       ;(this as unknown as Record<string, unknown>)[m] = (...args: unknown[]) => this.exclusive(() => original(...args))
     }
@@ -260,10 +289,9 @@ export class FileEngine {
               const name = f.name.slice(0, -PAGE_EXT.length)
               return { name, path: path.join(secPath, f.name), hasCanvas: names.has(name + CANVAS_EXT) }
             })
-            .sort(byName)
-          sections.push({ name: sec, path: secPath, pages })
+          sections.push({ name: sec, path: secPath, pages: sortByOrder(pages, await this.readOrder(secPath)) })
         }
-        notebooks.push({ name: nb, path: nbPath, sections: sections.sort(byName) })
+        notebooks.push({ name: nb, path: nbPath, sections: sortByOrder(sections, await this.readOrder(nbPath)) })
       }
       return { root: this.root, notebooks: notebooks.sort(byName) }
     } catch (err) {
@@ -300,7 +328,8 @@ export class FileEngine {
     return name
   }
 
-  async deleteNotebook(rawName: string, opts: DeleteOptions = {}): Promise<void> {
+  /** Moves the notebook to the recycle bin; resolves to the bin entry's id. */
+  async deleteNotebook(rawName: string, opts: DeleteOptions = {}): Promise<string> {
     const name = existingName(rawName, 'notebook')
     const dir = this.notebookDir(name)
     await this.requireDir(dir, `Notebook "${name}"`)
@@ -310,7 +339,7 @@ export class FileEngine {
         throw new EngineFailure('NOT_EMPTY', `Notebook "${name}" is not empty.`, contents)
       }
     }
-    await this.removeDir(dir, `Deleting notebook "${name}"`)
+    return this.toTrash({ kind: 'notebook', notebook: name }, [[dir, 'item']])
   }
 
   // ---------- sections ----------
@@ -327,6 +356,7 @@ export class FileEngine {
     } catch (err) {
       wrapIo(err, `Creating section "${name}"`)
     }
+    await this.addToOrder(nbDir, name)
     return { name, path: dir, pages: [] }
   }
 
@@ -342,10 +372,12 @@ export class FileEngine {
     } catch (err) {
       wrapIo(err, `Renaming section "${oldName}"`)
     }
+    await this.renameInOrder(this.notebookDir(nb), oldName, name)
     return name
   }
 
-  async deleteSection(nbRaw: string, rawName: string, opts: DeleteOptions = {}): Promise<void> {
+  /** Moves the section to the recycle bin; resolves to the bin entry's id. */
+  async deleteSection(nbRaw: string, rawName: string, opts: DeleteOptions = {}): Promise<string> {
     const nb = existingName(nbRaw, 'notebook')
     const name = existingName(rawName, 'section')
     const dir = this.sectionDir(nb, name)
@@ -356,12 +388,15 @@ export class FileEngine {
         throw new EngineFailure('NOT_EMPTY', `Section "${name}" is not empty.`, contents)
       }
     }
-    await this.removeDir(dir, `Deleting section "${name}"`)
+    const id = await this.toTrash({ kind: 'section', notebook: nb, section: name }, [[dir, 'item']])
+    await this.removeFromOrder(this.notebookDir(nb), name)
+    return id
   }
 
   // ---------- pages ----------
 
-  async createPage(nbRaw: string, secRaw: string, rawName: string): Promise<PageInfo> {
+  async createPage(nbRaw: string, secRaw: string, rawName: string, content?: string): Promise<PageInfo> {
+    if (content !== undefined && (typeof content !== 'string' || content.length > 2_000_000)) throw new EngineFailure('IO_ERROR', 'Invalid page content.')
     const nb = existingName(nbRaw, 'notebook')
     const sec = existingName(secRaw, 'section')
     const name = validateName(rawName, 'page')
@@ -371,10 +406,11 @@ export class FileEngine {
     const file = this.pageFile(nb, sec, name)
     try {
       // 'wx' fails instead of overwriting if the file appeared in the meantime.
-      await fs.writeFile(file, `# ${name}\n\n`, { encoding: 'utf8', flag: 'wx' })
+      await fs.writeFile(file, content ?? `# ${name}\n\n`, { encoding: 'utf8', flag: 'wx' })
     } catch (err) {
       wrapIo(err, `Creating page "${name}"`)
     }
+    await this.addToOrder(secDir, name)
     return { name, path: file, hasCanvas: false }
   }
 
@@ -398,9 +434,12 @@ export class FileEngine {
       const text = await fs.readFile(to, 'utf8')
       const heading = `# ${oldName}\n`
       if (text.startsWith(heading)) await fs.writeFile(to, `# ${name}\n` + text.slice(heading.length), 'utf8')
+      const hist = path.join(secDir, HISTORY_DIR, oldName)
+      if (await this.isDir(hist)) await fs.rename(hist, path.join(secDir, HISTORY_DIR, name)).catch(() => {})
     } catch (err) {
       wrapIo(err, `Renaming page "${oldName}"`)
     }
+    await this.renameInOrder(secDir, oldName, name)
     return name
   }
 
@@ -439,9 +478,16 @@ export class FileEngine {
         }
       }
       await fs.rm(from)
+      const hist = path.join(fromDir, HISTORY_DIR, name)
+      if (await this.isDir(hist)) {
+        await fs.mkdir(path.join(toDir, HISTORY_DIR), { recursive: true })
+        await fs.rename(hist, path.join(toDir, HISTORY_DIR, name)).catch(() => {})
+      }
     } catch (err) {
       wrapIo(err, `Moving page "${name}"`)
     }
+    await this.removeFromOrder(fromDir, name)
+    await this.addToOrder(toDir, name)
     return name
   }
 
@@ -485,18 +531,20 @@ export class FileEngine {
     return markdown.replace(LINK, (all, open: string, dot: string | undefined, rel: string) => (renamed.has(rel) ? `${open}${dot ?? ''}${renamed.get(rel)}` : all))
   }
 
-  async deletePage(nbRaw: string, secRaw: string, rawName: string): Promise<void> {
+  /** Moves the page (with whiteboard and history) to the recycle bin; resolves to the bin entry's id. */
+  async deletePage(nbRaw: string, secRaw: string, rawName: string): Promise<string> {
     const nb = existingName(nbRaw, 'notebook')
     const sec = existingName(secRaw, 'section')
     const name = existingName(rawName, 'page')
     const file = this.pageFile(nb, sec, name)
     if (!(await this.isFile(file))) throw new EngineFailure('NOT_FOUND', `Page "${name}" was not found on disk.`)
-    try {
-      await fs.rm(file)
-      await fs.rm(this.canvasFile(nb, sec, name), { force: true })
-    } catch (err) {
-      wrapIo(err, `Deleting page "${name}"`)
-    }
+    const secDir = this.sectionDir(nb, sec)
+    const moves: [string, string][] = [[file, 'page.md']]
+    if (await this.isFile(this.canvasFile(nb, sec, name))) moves.push([this.canvasFile(nb, sec, name), 'page.canvas.json'])
+    if (await this.isDir(path.join(secDir, HISTORY_DIR, name))) moves.push([path.join(secDir, HISTORY_DIR, name), 'history'])
+    const id = await this.toTrash({ kind: 'page', notebook: nb, section: sec, page: name }, moves)
+    await this.removeFromOrder(secDir, name)
+    return id
   }
 
   /**
@@ -512,6 +560,7 @@ export class FileEngine {
     if (!(await this.isFile(file))) {
       throw new EngineFailure('NOT_FOUND', `Page "${name}" no longer exists on disk, so your changes could not be saved.`)
     }
+    await this.snapshot(file, false).catch(() => {}) // page history (at most every 10 minutes)
     const tmp = tempPathFor(file)
     try {
       await fs.writeFile(tmp, content, 'utf8')
@@ -640,12 +689,384 @@ export class FileEngine {
     return p
   }
 
+  // ---------- custom order (drag & drop of section tabs and pages) ----------
+
+  private async readOrder(dir: string): Promise<string[]> {
+    try {
+      const data = JSON.parse(await fs.readFile(path.join(dir, ORDER_FILE), 'utf8'))
+      return Array.isArray(data) ? data.filter((x): x is string => typeof x === 'string') : []
+    } catch {
+      return []
+    }
+  }
+
+  private async writeOrder(dir: string, names: string[]): Promise<void> {
+    const file = path.join(dir, ORDER_FILE)
+    const tmp = tempPathFor(file)
+    await fs.writeFile(tmp, JSON.stringify([...new Set(names)], null, 1) + '\n', 'utf8')
+    await fs.rename(tmp, file)
+  }
+
+  /** Only once an order was set by hand does a new item get a place at the end of it. */
+  private async addToOrder(dir: string, name: string): Promise<void> {
+    const order = await this.readOrder(dir)
+    if (order.length && !order.includes(name)) await this.writeOrder(dir, [...order, name]).catch(() => {})
+  }
+  private async removeFromOrder(dir: string, name: string): Promise<void> {
+    const order = await this.readOrder(dir)
+    if (order.includes(name)) await this.writeOrder(dir, order.filter((n) => n !== name)).catch(() => {})
+  }
+  private async renameInOrder(dir: string, from: string, to: string): Promise<void> {
+    const order = await this.readOrder(dir)
+    if (order.includes(from)) await this.writeOrder(dir, order.map((n) => (n === from ? to : n))).catch(() => {})
+  }
+
+  /** Saves the order of a notebook's sections (section omitted) or a section's pages. */
+  async setOrder(nbRaw: string, secRaw: string | null, names: unknown): Promise<void> {
+    if (!Array.isArray(names) || names.length > 10000 || !names.every((n) => typeof n === 'string')) throw new EngineFailure('INVALID_NAME', 'Invalid order.')
+    const nb = existingName(nbRaw, 'notebook')
+    const dir = secRaw === null || secRaw === undefined ? this.notebookDir(nb) : this.sectionDir(nb, existingName(secRaw, 'section'))
+    await this.requireDir(dir, 'That folder')
+    try {
+      await this.writeOrder(dir, (names as string[]).map((n) => existingName(n, 'page')))
+    } catch (err) {
+      wrapIo(err, 'Saving the order')
+    }
+  }
+
+  // ---------- duplicate / append ----------
+
+  /** Copies a page (and its whiteboard) as "<name> (copy)"; resolves to the new name. */
+  async duplicatePage(nbRaw: string, secRaw: string, pageRaw: string): Promise<string> {
+    const nb = existingName(nbRaw, 'notebook')
+    const sec = existingName(secRaw, 'section')
+    const name = existingName(pageRaw, 'page')
+    const from = this.pageFile(nb, sec, name)
+    if (!(await this.isFile(from))) throw new EngineFailure('NOT_FOUND', `Page "${name}" was not found on disk.`)
+    const secDir = this.sectionDir(nb, sec)
+    const existing = new Set((await this.entryNames(secDir)).map((e) => e.toLowerCase()))
+    let copy = ''
+    for (let i = 1; i < 1000 && !copy; i++) {
+      const candidate = (i === 1 ? `${name} (copy)` : `${name} (copy ${i})`).slice(0, MAX_NAME_LENGTH)
+      if (!existing.has((candidate + PAGE_EXT).toLowerCase()) && !existing.has((candidate + CANVAS_EXT).toLowerCase())) copy = candidate
+    }
+    if (!copy) throw new EngineFailure('DUPLICATE', 'Too many copies of this page.')
+    try {
+      let text = await fs.readFile(from, 'utf8')
+      if (text.startsWith(`# ${name}\n`)) text = `# ${copy}\n` + text.slice(`# ${name}\n`.length)
+      await fs.writeFile(this.pageFile(nb, sec, copy), text, { encoding: 'utf8', flag: 'wx' })
+      if (await this.isFile(this.canvasFile(nb, sec, name))) await fs.copyFile(this.canvasFile(nb, sec, name), this.canvasFile(nb, sec, copy))
+    } catch (err) {
+      wrapIo(err, `Duplicating page "${name}"`)
+    }
+    const order = await this.readOrder(secDir)
+    if (order.length) {
+      const at = order.indexOf(name)
+      order.splice(at < 0 ? order.length : at + 1, 0, copy)
+      await this.writeOrder(secDir, order).catch(() => {})
+    }
+    return copy
+  }
+
+  /** Adds Markdown to the end of a page (used for "whiteboard snapshot into page"). */
+  async appendToPage(nbRaw: string, secRaw: string, pageRaw: string, markdown: string): Promise<void> {
+    if (typeof markdown !== 'string' || markdown.length > 1_000_000) throw new EngineFailure('IO_ERROR', 'Invalid content.')
+    const text = await this.readPage(nbRaw, secRaw, pageRaw)
+    await this.writePage(nbRaw, secRaw, pageRaw, text.replace(/\s*$/, '') + '\n\n' + markdown.trim() + '\n')
+  }
+
+  // ---------- recycle bin ----------
+
+  private trashDir(): string {
+    return path.join(this.root, TRASH_DIR)
+  }
+
+  /** Moves things into a new recycle-bin entry with a small description file. */
+  private async toTrash(meta: Omit<TrashItem, 'id' | 'deletedAt' | 'pages'>, moves: [string, string][]): Promise<string> {
+    const id = `${Date.now()}-${randomUUID().slice(0, 8)}`
+    const dir = path.join(this.trashDir(), id)
+    const what = `Deleting ${meta.kind} "${meta.page ?? meta.section ?? meta.notebook}"`
+    try {
+      await fs.mkdir(dir, { recursive: true })
+      await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify({ ...meta, deletedAt: new Date().toISOString() }, null, 1), 'utf8')
+      if (meta.kind === 'page') await fs.mkdir(path.join(dir, 'item'))
+      for (const [from, to] of moves) await fs.rename(from, meta.kind === 'page' ? path.join(dir, 'item', to) : path.join(dir, to))
+    } catch (err) {
+      wrapIo(err, what)
+    }
+    return id
+  }
+
+  async listTrash(): Promise<TrashItem[]> {
+    const out: TrashItem[] = []
+    let ids: string[] = []
+    try {
+      ids = await fs.readdir(this.trashDir())
+    } catch {
+      return []
+    }
+    for (const id of ids.filter((i) => TRASH_ID.test(i))) {
+      try {
+        const meta = JSON.parse(await fs.readFile(path.join(this.trashDir(), id, 'meta.json'), 'utf8'))
+        let pages = meta.kind === 'page' ? 1 : 0
+        if (meta.kind !== 'page') {
+          const c = await this.countContents(path.join(this.trashDir(), id, 'item'), meta.kind === 'notebook').catch(() => null)
+          pages = c?.pages ?? 0
+        }
+        out.push({ id, kind: meta.kind, notebook: meta.notebook, section: meta.section, page: meta.page, deletedAt: meta.deletedAt, pages })
+      } catch {
+        /* not a valid entry */
+      }
+    }
+    return out.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt))
+  }
+
+  /** A free name in `dir` based on `name`: "name", then "name (restored)", "name (restored 2)", ... */
+  private async freeName(dir: string, name: string, ext = ''): Promise<string> {
+    const taken = new Set((await this.entryNames(dir).catch(() => [] as string[])).map((e) => e.toLowerCase()))
+    for (let i = 0; i < 1000; i++) {
+      const candidate = (i === 0 ? name : i === 1 ? `${name} (restored)` : `${name} (restored ${i})`).slice(0, MAX_NAME_LENGTH)
+      if (!taken.has((candidate + ext).toLowerCase()) && (!ext || !taken.has((candidate + CANVAS_EXT).toLowerCase()))) return candidate
+    }
+    throw new EngineFailure('DUPLICATE', 'No free name to restore to.')
+  }
+
+  /** Puts a deleted item back where it was (re-creating its notebook/section if needed). */
+  async restoreFromTrash(idRaw: unknown): Promise<ItemRef> {
+    if (typeof idRaw !== 'string' || !TRASH_ID.test(idRaw)) throw new EngineFailure('NOT_FOUND', 'That item is not in the recycle bin.')
+    const dir = path.join(this.trashDir(), idRaw)
+    const item = (await this.listTrash()).find((t) => t.id === idRaw)
+    if (!item) throw new EngineFailure('NOT_FOUND', 'That item is not in the recycle bin.')
+    try {
+      if (item.kind === 'notebook') {
+        const name = await this.freeName(this.root, existingName(item.notebook, 'notebook'))
+        await fs.rename(path.join(dir, 'item'), this.notebookDir(name))
+        await fs.rm(dir, { recursive: true, force: true })
+        return { notebook: name }
+      }
+      const nb = existingName(item.notebook, 'notebook')
+      await fs.mkdir(this.notebookDir(nb), { recursive: true })
+      if (item.kind === 'section') {
+        const name = await this.freeName(this.notebookDir(nb), existingName(item.section, 'section'))
+        await fs.rename(path.join(dir, 'item'), this.sectionDir(nb, name))
+        await fs.rm(dir, { recursive: true, force: true })
+        await this.addToOrder(this.notebookDir(nb), name)
+        return { notebook: nb, section: name }
+      }
+      const sec = existingName(item.section, 'section')
+      const secDir = this.sectionDir(nb, sec)
+      await fs.mkdir(secDir, { recursive: true })
+      const name = await this.freeName(secDir, existingName(item.page, 'page'), PAGE_EXT)
+      await fs.rename(path.join(dir, 'item', 'page.md'), this.pageFile(nb, sec, name))
+      if (await this.isFile(path.join(dir, 'item', 'page.canvas.json'))) await fs.rename(path.join(dir, 'item', 'page.canvas.json'), this.canvasFile(nb, sec, name))
+      if (await this.isDir(path.join(dir, 'item', 'history'))) {
+        await fs.mkdir(path.join(secDir, HISTORY_DIR), { recursive: true })
+        await fs.rename(path.join(dir, 'item', 'history'), path.join(secDir, HISTORY_DIR, name)).catch(() => {})
+      }
+      await fs.rm(dir, { recursive: true, force: true })
+      await this.addToOrder(secDir, name)
+      return { notebook: nb, section: sec, page: name }
+    } catch (err) {
+      wrapIo(err, 'Restoring from the recycle bin')
+    }
+  }
+
+  /** Deletes one recycle-bin entry for good, or all of them (id omitted). */
+  async emptyTrash(idRaw?: unknown): Promise<void> {
+    if (idRaw !== undefined && idRaw !== null) {
+      if (typeof idRaw !== 'string' || !TRASH_ID.test(idRaw)) throw new EngineFailure('NOT_FOUND', 'That item is not in the recycle bin.')
+      await fs.rm(path.join(this.trashDir(), idRaw), { recursive: true, force: true })
+      return
+    }
+    await fs.rm(this.trashDir(), { recursive: true, force: true })
+  }
+
+  /** Empties recycle-bin entries older than 30 days (run at start-up). */
+  async purgeOldTrash(days = TRASH_KEEP_DAYS): Promise<number> {
+    const cutoff = Date.now() - days * 24 * 3600 * 1000
+    let n = 0
+    for (const t of await this.listTrash()) {
+      if (Date.parse(t.deletedAt) < cutoff) {
+        await fs.rm(path.join(this.trashDir(), t.id), { recursive: true, force: true })
+        n++
+      }
+    }
+    return n
+  }
+
+  // ---------- page history ----------
+
+  private historyDir(nb: string, sec: string, page: string): string {
+    return path.join(this.sectionDir(nb, sec), HISTORY_DIR, page)
+  }
+
+  /** Copies the page's current text into its history (unless a recent copy exists, or `force`). */
+  private async snapshot(file: string, force: boolean): Promise<void> {
+    const page = path.basename(file, PAGE_EXT)
+    const dir = path.join(path.dirname(file), HISTORY_DIR, page)
+    const current = await fs.readFile(file, 'utf8')
+    let versions: string[] = []
+    try {
+      versions = (await fs.readdir(dir)).filter((v) => VERSION_ID.test(v)).sort()
+    } catch {
+      /* none yet */
+    }
+    const latest = versions[versions.length - 1]
+    if (!force && latest) {
+      const st = await fs.stat(path.join(dir, latest))
+      if (Date.now() - st.mtimeMs < HISTORY_EVERY_MS) return
+      if ((await fs.readFile(path.join(dir, latest), 'utf8')) === current) return
+    }
+    if (!current.trim() || current === `# ${page}\n\n`) return // nothing worth keeping
+    await fs.mkdir(dir, { recursive: true })
+    const d = new Date()
+    const p2 = (n: number) => String(n).padStart(2, '0')
+    const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`
+    let id = `${stamp}.md`
+    for (let i = 2; versions.includes(id); i++) id = `${stamp}-${i}.md`
+    await fs.writeFile(path.join(dir, id), current, 'utf8')
+    versions.push(id)
+    for (const old of versions.sort().slice(0, Math.max(0, versions.length - HISTORY_KEEP))) await fs.rm(path.join(dir, old), { force: true })
+  }
+
+  async listVersions(nbRaw: string, secRaw: string, pageRaw: string): Promise<PageVersion[]> {
+    const dir = this.historyDir(existingName(nbRaw, 'notebook'), existingName(secRaw, 'section'), existingName(pageRaw, 'page'))
+    let files: string[] = []
+    try {
+      files = (await fs.readdir(dir)).filter((v) => VERSION_ID.test(v))
+    } catch {
+      return []
+    }
+    const out: PageVersion[] = []
+    for (const id of files) {
+      const text = await fs.readFile(path.join(dir, id), 'utf8').catch(() => '')
+      const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(id)!
+      out.push({ id, savedAt: new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).toISOString(), size: text.length, preview: text.replace(/^#.*\n/, '').replace(/\s+/g, ' ').trim().slice(0, 140) })
+    }
+    return out.sort((a, b) => b.id.localeCompare(a.id))
+  }
+
+  async readVersion(nbRaw: string, secRaw: string, pageRaw: string, idRaw: unknown): Promise<string> {
+    if (typeof idRaw !== 'string' || !VERSION_ID.test(idRaw)) throw new EngineFailure('NOT_FOUND', 'That version does not exist.')
+    try {
+      return await fs.readFile(path.join(this.historyDir(existingName(nbRaw, 'notebook'), existingName(secRaw, 'section'), existingName(pageRaw, 'page')), idRaw), 'utf8')
+    } catch (err) {
+      wrapIo(err, 'Reading that version')
+    }
+  }
+
+  /** Makes an earlier version the current page (the current text is kept in the history first). */
+  async restoreVersion(nbRaw: string, secRaw: string, pageRaw: string, idRaw: unknown): Promise<string> {
+    const text = await this.readVersion(nbRaw, secRaw, pageRaw, idRaw)
+    const file = this.pageFile(existingName(nbRaw, 'notebook'), existingName(secRaw, 'section'), existingName(pageRaw, 'page'))
+    await this.snapshot(file, true).catch(() => {})
+    const tmp = tempPathFor(file)
+    try {
+      await fs.writeFile(tmp, text, 'utf8')
+      await fs.rename(tmp, file)
+    } catch (err) {
+      await fs.rm(tmp, { force: true }).catch(() => {})
+      wrapIo(err, 'Restoring that version')
+    }
+    return text
+  }
+
+  // ---------- notebook backup (.zip) ----------
+
+  /** The notebook as a .zip (pages, whiteboards, pictures, order; not history). */
+  async exportNotebook(nbRaw: string): Promise<Uint8Array> {
+    const nb = existingName(nbRaw, 'notebook')
+    const base = this.notebookDir(nb)
+    await this.requireDir(base, `Notebook "${nb}"`)
+    const files: Zippable = {}
+    const walk = async (dir: string, rel: string): Promise<void> => {
+      for (const e of await fs.readdir(dir, { withFileTypes: true })) {
+        if (e.name === HISTORY_DIR || e.name === TRASH_DIR || TEMP_FILE.test(e.name)) continue
+        const full = path.join(dir, e.name)
+        const r = rel ? `${rel}/${e.name}` : e.name
+        if (e.isDirectory()) await walk(full, r)
+        else if (e.isFile()) files[`${nb}/${r}`] = [await fs.readFile(full), { level: 6 }]
+      }
+    }
+    try {
+      await walk(base, '')
+      if (!Object.keys(files).length) files[`${nb}/`] = strToU8('')
+      return zipSync(files)
+    } catch (err) {
+      wrapIo(err, `Exporting notebook "${nb}"`)
+    }
+  }
+
+  /**
+   * Adds a notebook from a .zip made by Export (or any zip of Section/Page.md folders).
+   * Only notes, whiteboards, pictures and order files are taken; nothing can be
+   * written outside the new notebook. Resolves to the new notebook's name.
+   */
+  async importNotebook(data: unknown, suggestedName: unknown): Promise<string> {
+    if (!(data instanceof Uint8Array)) throw new EngineFailure('IO_ERROR', 'That file could not be read.')
+    if (data.byteLength > 500 * 1024 * 1024) throw new EngineFailure('IO_ERROR', 'That backup is too large (over 500 MB).')
+    let entries: Record<string, Uint8Array>
+    try {
+      let total = 0
+      entries = unzipSync(data, {
+        filter: (f) => {
+          total += f.originalSize
+          if (total > 2 * 1024 * 1024 * 1024) throw new Error('too big')
+          return !f.name.endsWith('/')
+        }
+      })
+    } catch {
+      throw new EngineFailure('IO_ERROR', 'That file is not a notebook backup (.zip).')
+    }
+    const names = Object.keys(entries).map((n) => n.replace(/\\/g, '/'))
+    if (names.length > 50000) throw new EngineFailure('IO_ERROR', 'That backup has too many files.')
+    // A single top-level folder is the notebook itself.
+    const tops = new Set(names.map((n) => n.split('/')[0]))
+    const strip = tops.size === 1 && names.every((n) => n.includes('/'))
+    const top = strip ? [...tops][0] : ''
+    const wanted = typeof suggestedName === 'string' && suggestedName.trim() ? suggestedName : top || 'Imported notebook'
+    let nbName: string
+    try {
+      nbName = validateName(wanted, 'notebook')
+    } catch {
+      nbName = 'Imported notebook'
+    }
+    await this.ensureRoot()
+    nbName = await this.freeName(this.root, nbName)
+    const target = this.notebookDir(nbName)
+    const allowed = (p: string) => p.endsWith(PAGE_EXT) || p.endsWith(CANVAS_EXT) || p.endsWith('/' + ORDER_FILE) || p === ORDER_FILE || IMAGE_EXTS.has(path.extname(p).toLowerCase())
+    let written = 0
+    try {
+      await fs.mkdir(target)
+      for (const [rawName, bytes] of Object.entries(entries)) {
+        const rel = (strip ? rawName.replace(/\\/g, '/').slice(top.length + 1) : rawName.replace(/\\/g, '/')).replace(/^\/+/, '')
+        const parts = rel.split('/')
+        if (!rel || parts.length > 3 || parts.some((p) => !p || p === '.' || p === '..' || /[\0]/.test(p)) || !allowed(rel)) continue
+        if (parts.some((p, i) => i < parts.length - 1 && p.startsWith('.'))) continue
+        const dest = path.resolve(target, ...parts)
+        if (!dest.startsWith(target + path.sep)) continue
+        await fs.mkdir(path.dirname(dest), { recursive: true })
+        await fs.writeFile(dest, bytes, { flag: 'wx' }).catch(() => {})
+        written++
+      }
+    } catch (err) {
+      await fs.rm(target, { recursive: true, force: true }).catch(() => {})
+      wrapIo(err, 'Importing the notebook')
+    }
+    if (!written) {
+      await fs.rm(target, { recursive: true, force: true }).catch(() => {})
+      throw new EngineFailure('IO_ERROR', 'No pages were found in that file.')
+    }
+    return nbName
+  }
+
   // ---------- helpers ----------
 
   private async countContents(dir: string, isNotebook: boolean): Promise<NonNullable<EngineError['contents']>> {
     const counts = { sections: 0, pages: 0, otherFiles: 0 }
     const walk = async (d: string, depth: number): Promise<void> => {
       for (const e of await fs.readdir(d, { withFileTypes: true })) {
+        if (e.name === HISTORY_DIR || e.name === ORDER_FILE || TEMP_FILE.test(e.name)) continue
         const full = path.join(d, e.name)
         // In a notebook, depth-0 folders are sections; anything else is "other".
         if (e.isDirectory()) {
@@ -665,14 +1086,5 @@ export class FileEngine {
       wrapIo(err, 'Reading folder contents')
     }
     return counts
-  }
-
-  private async removeDir(dir: string, what: string): Promise<void> {
-    if (dir === this.root) throw new EngineFailure('INVALID_NAME', 'Refusing to delete the justNotes root folder.')
-    try {
-      await fs.rm(dir, { recursive: true })
-    } catch (err) {
-      wrapIo(err, what)
-    }
   }
 }

@@ -21,16 +21,25 @@ const api: WikiApi = {
   createPage: call('createPage'),
   renamePage: call('renamePage'),
   deletePage: call('deletePage'),
+  duplicatePage: call('duplicatePage'),
+  setOrder: call('setOrder'),
+  appendToPage: call('appendToPage'),
+  listTrash: call('listTrash'),
+  restoreFromTrash: call('restoreFromTrash'),
+  emptyTrash: call('emptyTrash'),
+  listVersions: call('listVersions'),
+  readVersion: call('readVersion'),
+  restoreVersion: call('restoreVersion'),
+  exportNotebook: call('exportNotebook'),
+  importNotebook: call('importNotebook'),
   movePage: call('movePage'),
   readPage: call('readPage'),
   writePage: call('writePage'),
   readCanvas: call('readCanvas'),
   writeCanvas: call('writeCanvas'),
   setTheme: call('setTheme'),
-  zoom: (direction) => {
-    const level = direction === 'reset' ? 0 : Math.max(-3, Math.min(4, webFrame.getZoomLevel() + (direction === 'in' ? 0.5 : -0.5)))
-    webFrame.setZoomLevel(level)
-    return webFrame.getZoomFactor()
+  setAppZoom: (factor) => {
+    webFrame.setZoomFactor(Math.min(2, Math.max(0.5, Number(factor) || 1)))
   },
   saveAsset: call('saveAsset'),
   pickImage: call('pickImage'),

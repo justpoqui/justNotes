@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EngineError, Result, Tree } from '../../shared/types'
 import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog'
 import { ContextMenu, type MenuItem } from './components/ContextMenu'
+import { HistoryDialog, ShortcutsDialog, TemplateDialog, TrashDialog } from './components/Dialogs'
 import { MoveDialog } from './components/MoveDialog'
 import { NotebookDialog, type NotebookDialogMode } from './components/NotebookDialog'
 import { PageView } from './components/PageView'
@@ -15,7 +16,9 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { StatusBar } from './components/StatusBar'
 import { Sidebar, type Editing, type PageRow, type SidebarActions } from './components/Sidebar'
 import { flushAllSaves } from './editor/saveCoordinator'
-import { useSettings } from './lib/settings'
+import { getSettings, updateSettings, useSettings } from './lib/settings'
+import { getActivePage } from './editor/activePage'
+import { ZOOM_MAX, ZOOM_MIN } from './components/StatusBar'
 import { load, save } from './lib/storage'
 import { existsIn, isWithin, kindOf, nameOf, nearestExisting, parentOf, refOf, remapKey } from './lib/tree'
 
@@ -46,7 +49,16 @@ export function App() {
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null)
   const [notebookDialog, setNotebookDialog] = useState<NotebookDialogMode | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [info, setInfo] = useState<string | null>(null) // non-error notices, e.g. "Moved …"
+  // Non-error notices, e.g. "Moved …", optionally with a button such as Undo.
+  const [info, setInfoState] = useState<{ text: string; action?: { label: string; run: () => void } } | null>(null)
+  const setInfo = (text: string, action?: { label: string; run: () => void }) => setInfoState({ text, action })
+  const [templateFor, setTemplateFor] = useState<string | null>(null) // section key
+  const [trashOpen, setTrashOpen] = useState(false)
+  const [historyFor, setHistoryFor] = useState<string | null>(null) // page key
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  // Recently opened and favourite pages (keys), remembered between runs.
+  const [recent, setRecent] = useState<string[]>(() => load('jn.recent', []))
+  const [favourites, setFavourites] = useState<string[]>(() => load('jn.favourites', []))
   const [moving, setMoving] = useState<string | null>(null) // page key being moved
   const [settingsOpen, setSettingsOpen] = useState(false)
   const settings = useSettings()
@@ -58,7 +70,6 @@ export function App() {
   // Where you were last: notebook → section key, section key → page key.
   const [lastSection, setLastSection] = useState<Record<string, string>>(() => load('jn.lastSection', {}))
   const [lastPage, setLastPage] = useState<Record<string, string>>(() => load('jn.lastPage', {}))
-  const [zoom, setZoom] = useState(1)
   const firstLoad = useRef(true)
   const remembered = useRef({ lastSection, lastPage })
   remembered.current = { lastSection, lastPage }
@@ -69,6 +80,8 @@ export function App() {
   useEffect(() => save('jn.pageModes', pageModes), [pageModes])
   useEffect(() => save('jn.lastSection', lastSection), [lastSection])
   useEffect(() => save('jn.lastPage', lastPage), [lastPage])
+  useEffect(() => save('jn.recent', recent), [recent])
+  useEffect(() => save('jn.favourites', favourites), [favourites])
   useEffect(() => {
     save('jn.theme', theme)
     document.documentElement.dataset.theme = theme
@@ -82,12 +95,15 @@ export function App() {
     if (section === undefined) return
     const secKey = `${notebook}/${section}`
     setLastSection((p) => (p[notebook] === secKey ? p : { ...p, [notebook]: secKey }))
-    if (kindOf(selectedKey) === 'page') setLastPage((p) => (p[secKey] === selectedKey ? p : { ...p, [secKey]: selectedKey }))
+    if (kindOf(selectedKey) === 'page') {
+      setLastPage((p) => (p[secKey] === selectedKey ? p : { ...p, [secKey]: selectedKey }))
+      setRecent((r) => (r[0] === selectedKey ? r : [selectedKey, ...r.filter((k) => k !== selectedKey)].slice(0, 12)))
+    }
   }, [selectedKey])
 
   useEffect(() => {
     if (!info) return
-    const t = setTimeout(() => setInfo(null), 4000)
+    const t = setTimeout(() => setInfoState(null), info.action ? 8000 : 4000)
     return () => clearTimeout(t)
   }, [info])
 
@@ -162,16 +178,66 @@ export function App() {
     root.setProperty('--editor-size', `${settings.editorFontSize}px`)
   }, [settings.editorFont, settings.editorFontSize])
 
-  // Ctrl+, opens Settings.
+  // App size (Settings → General) is remembered between runs.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === ',') {
-        e.preventDefault()
-        setSettingsOpen(true)
-      }
+    api.setAppZoom(settings.appZoom || 1)
+  }, [settings.appZoom])
+
+  // App-wide keyboard shortcuts (the cheat-sheet is F1). Kept in a ref so the
+  // listener always sees the current state.
+  const shortcutRef = useRef<(e: KeyboardEvent) => void>(() => {})
+  shortcutRef.current = (e: KeyboardEvent) => {
+    const ctrl = e.ctrlKey || e.metaKey
+    const dialogOpen = !!document.querySelector('.backdrop')
+    if (e.key === 'F1' || (ctrl && e.key === '/')) {
+      e.preventDefault()
+      return setShortcutsOpen(true)
+    }
+    if (!ctrl || e.altKey) return
+    if (e.key === ',') {
+      e.preventDefault()
+      return setSettingsOpen(true)
+    }
+    // Page zoom: Ctrl+= / Ctrl+- / Ctrl+0
+    const zoom = getSettings().pageZoom || 1
+    const setZoom = (z: number) => updateSettings({ pageZoom: Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)) * 100) / 100 })
+    if (e.key === '=' || e.key === '+') return (e.preventDefault(), setZoom(zoom + 0.1))
+    if (e.key === '-' || e.key === '_') return (e.preventDefault(), setZoom(zoom - 0.1))
+    if (e.key === '0') return (e.preventDefault(), setZoom(1))
+    if (dialogOpen || !notebook) return
+    const k = e.key.toLowerCase()
+    if (k === 'n' && !e.shiftKey && sectionKey) return (e.preventDefault(), startCreate(sectionKey))
+    if (k === 'n' && e.shiftKey) return (e.preventDefault(), startCreate(notebook.name))
+    if (e.key === 'PageDown' || e.key === 'PageUp') {
+      e.preventDefault()
+      const i = pages.findIndex((p) => p.key === selectedKey)
+      const next = pages[i + (e.key === 'PageDown' ? 1 : -1)]
+      if (next) setSelectedKey(next.key)
+      return
+    }
+    if (e.key === 'Tab' && notebook.sections.length > 1) {
+      e.preventDefault()
+      const list = notebook.sections
+      const i = list.findIndex((x) => `${notebook.name}/${x.name}` === sectionKey)
+      const next = list[(i + (e.shiftKey ? -1 : 1) + list.length) % list.length]
+      selectSection(`${notebook.name}/${next.name}`)
+    }
+  }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => shortcutRef.current(e)
+    // Ctrl + mouse wheel zooms the page.
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || !(e.target as HTMLElement).closest?.('.content')) return
+      e.preventDefault()
+      const z = getSettings().pageZoom || 1
+      updateSettings({ pageZoom: Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z + (e.deltaY < 0 ? 0.1 : -0.1))) * 100) / 100 })
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('wheel', onWheel)
+    }
   }, [])
 
   // Unsaved edits are written before the window closes.
@@ -189,7 +255,7 @@ export function App() {
   )
 
   /** Toast for a failed result; returns true if it succeeded. */
-  const check = (r: Result<unknown>): boolean => {
+  const check = <T,>(r: Result<T>): r is { ok: true; data: T } => {
     if (!r.ok) setToast(r.error.message)
     return r.ok
   }
@@ -227,6 +293,8 @@ export function App() {
     setPageModes((prev) => Object.fromEntries(Object.entries(prev).map(([k, v]) => [remapKey(k, from, to), v])))
     setLastSection((prev) => remapRecord(prev, from, to))
     setLastPage((prev) => remapRecord(prev, from, to))
+    setRecent((prev) => prev.map((k) => remapKey(k, from, to)))
+    setFavourites((prev) => prev.map((k) => remapKey(k, from, to)))
   }
 
   const submitEdit = async (value: string, viaBlur: boolean) => {
@@ -281,12 +349,22 @@ export function App() {
     return null
   }
 
-  // ----- delete -----
+  // ----- delete (to the recycle bin, with Undo) -----
+  const restore = async (id: string) => {
+    const r = await api.restoreFromTrash(id)
+    if (!check(r)) return
+    const t = await refresh()
+    const ref = r.data
+    const key = [ref.notebook, ref.section, ref.page].filter(Boolean).join('/')
+    if (t) setSelectedKey(landing(t, key))
+    setInfoState(null)
+  }
+
   const remove = async (key: string) => {
     await flushAllSaves()
     const { notebook: nb, section: sec, page } = refOf(key)
     const kind = kindOf(key)
-    const afterDelete = async () => {
+    const afterDelete = async (id: string) => {
       const t = await refresh()
       // Move to a neighbour of what was deleted (another page / section), or close the notebook.
       setSelectedKey((k) => {
@@ -294,32 +372,81 @@ export function App() {
         const parent = parentOf(key)
         return parent && t ? landing(t, parent) : null
       })
+      setFavourites((f) => f.filter((k) => !isWithin(k, key)))
+      setInfo(`Moved ${kind} "${nameOf(key)}" to the Recycle bin`, { label: 'Undo', run: () => void restore(id) })
     }
 
     if (kind === 'page') {
-      setConfirm({
-        title: `Delete page "${page}"?`,
-        message: `"${page}.md" will be permanently deleted from disk.`,
-        confirmLabel: 'Delete page',
-        onConfirm: async () => {
-          if (check(await api.deletePage(nb, sec!, page!))) await afterDelete()
-        }
-      })
+      const r = await api.deletePage(nb, sec!, page!)
+      if (check(r)) await afterDelete(r.data)
       return
     }
-
     const del = (force: boolean) => (kind === 'notebook' ? api.deleteNotebook(nb, { force }) : api.deleteSection(nb, sec!, { force }))
     const r = await del(false)
-    if (r.ok) return afterDelete()
+    if (r.ok) return afterDelete(r.data)
     if (r.error.code !== 'NOT_EMPTY') return void check(r)
     setConfirm({
       title: `Delete ${kind} "${nameOf(key)}"?`,
-      message: `It contains ${describeContents(r.error.contents)}. Everything inside will be permanently deleted from disk.`,
-      confirmLabel: 'Delete everything',
+      message: `It contains ${describeContents(r.error.contents)}. It will go to the Recycle bin (File → Recycle bin), where it's kept for 30 days.`,
+      confirmLabel: `Delete ${kind}`,
       onConfirm: async () => {
-        if (check(await del(true))) await afterDelete()
+        const d = await del(true)
+        if (check(d)) await afterDelete(d.data)
       }
     })
+  }
+
+  // ----- new page from a template, duplicate, history, reordering -----
+  const createFromTemplate = async (secKey: string, name: string, content: string): Promise<EngineError | null> => {
+    const { notebook: nb, section: sec } = refOf(secKey)
+    const r = await api.createPage(nb, sec!, name, content)
+    if (!r.ok) return r.error
+    setTemplateFor(null)
+    await refresh()
+    setSelectedKey(`${secKey}/${r.data.name}`)
+    return null
+  }
+
+  const duplicate = async (key: string) => {
+    await flushAllSaves()
+    const { notebook: nb, section: sec, page } = refOf(key)
+    const r = await api.duplicatePage(nb, sec!, page!)
+    if (!check(r)) return
+    await refresh()
+    setSelectedKey(`${nb}/${sec}/${r.data}`)
+    setInfo(`Made a copy: "${r.data}"`)
+  }
+
+  const reorder = async (secKey: string | null, names: string[]) => {
+    if (!notebook) return
+    const r = await api.setOrder(notebook.name, secKey ? refOf(secKey).section! : null, names)
+    if (check(r)) await refresh()
+  }
+
+  const toggleFavourite = (key: string) => setFavourites((f) => (f.includes(key) ? f.filter((k) => k !== key) : [...f, key]))
+
+  /** Opens any page by key (from Recent / Favourites), switching notebook if needed. */
+  const openPage = (key: string) => {
+    if (tree && existsIn(tree, key)) setSelectedKey(key)
+    else {
+      setRecent((r) => r.filter((k) => k !== key))
+      setFavourites((f) => f.filter((k) => k !== key))
+      setToast('That page no longer exists.')
+    }
+  }
+
+  // ----- whiteboard → page: add a picture of the whiteboard to the end of the page -----
+  const snapshotToPage = async () => {
+    const board = getActivePage().board
+    if (!board || !selectedKey || selectedKind !== 'page') return
+    const { notebook: nb, section: sec, page } = refOf(selectedKey)
+    const blob = await board.snapshot()
+    if (!blob) return setToast('The whiteboard is empty.')
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')
+    const saved = await api.saveAsset(nb, sec!, `whiteboard-${stamp}.png`, new Uint8Array(await blob.arrayBuffer()))
+    if (!check(saved)) return
+    const r = await api.appendToPage(nb, sec!, page!, `![Whiteboard](${saved.data})`)
+    if (check(r)) setInfo('Added a picture of the whiteboard to the end of the page', { label: 'Show page', run: () => setMode('page') })
   }
 
   // ----- move a page to another section -----
@@ -349,7 +476,8 @@ export function App() {
     submitEdit: (v, b) => void submitEdit(v, b),
     cancelEdit: () => setEditing(null),
     remove: (k) => void remove(k),
-    openMenu: (x, y, key) => setMenu({ x, y, key })
+    openMenu: (x, y, key) => setMenu({ x, y, key }),
+    reorder: (names) => void reorder(sectionKey, names)
   }
 
   const menuItems = (key: string | null): (MenuItem | 'sep')[] => {
@@ -359,20 +487,49 @@ export function App() {
       return [
         { label: 'New section', onClick: () => startCreate(key) },
         { label: 'Rename notebook…', onClick: () => startRename(key) },
+        { label: 'Back up notebook…', onClick: () => void backup(key) },
         { label: 'Show in file manager', onClick: () => void showInFolder(key) },
         'sep',
         { label: 'Delete notebook', danger: true, onClick: () => void remove(key) }
       ]
     }
-    return [
-      { label: 'New page', onClick: () => startCreate(kind === 'section' ? key : parentOf(key)) },
-      ...(kind === 'section' ? [{ label: 'New section', onClick: () => startCreate(parentOf(key)) }] : []),
-      { label: 'Rename', shortcut: 'F2', onClick: () => startRename(key) },
-      ...(kind === 'page' ? [{ label: 'Move…', onClick: () => setMoving(key) }] : []),
-      { label: 'Show in file manager', onClick: () => void showInFolder(key) },
-      'sep',
-      { label: kind === 'section' ? 'Delete section' : 'Delete page', shortcut: kind === 'page' ? 'Del' : undefined, danger: true, onClick: () => void remove(key) }
+    const secKey = kind === 'section' ? key : parentOf(key)!
+    const items: (MenuItem | 'sep')[] = [
+      { label: 'New page', shortcut: 'Ctrl+N', onClick: () => startCreate(secKey) },
+      { label: 'New page from template…', onClick: () => setTemplateFor(secKey) }
     ]
+    if (kind === 'section') {
+      items.push({ label: 'New section', onClick: () => startCreate(parentOf(key)) }, 'sep', { label: 'Rename', shortcut: 'F2', onClick: () => startRename(key) })
+    } else {
+      items.push(
+        'sep',
+        { label: 'Rename', shortcut: 'F2', onClick: () => startRename(key) },
+        { label: 'Duplicate', onClick: () => void duplicate(key) },
+        { label: 'Move…', onClick: () => setMoving(key) },
+        { label: 'Page history…', onClick: () => setHistoryFor(key) },
+        { label: favourites.includes(key) ? 'Remove from Favourites' : 'Add to Favourites', onClick: () => toggleFavourite(key) }
+      )
+    }
+    items.push({ label: 'Show in file manager', onClick: () => void showInFolder(key) }, 'sep', {
+      label: kind === 'section' ? 'Delete section' : 'Delete page',
+      shortcut: kind === 'page' ? 'Del' : undefined,
+      danger: true,
+      onClick: () => void remove(key)
+    })
+    return items
+  }
+
+  const backup = async (nbName: string) => {
+    await flushAllSaves()
+    const r = await api.exportNotebook(nbName)
+    if (check(r) && r.data) setInfo(`Backed up "${nbName}" to ${r.data}`)
+  }
+  const restoreBackup = async () => {
+    const r = await api.importNotebook()
+    if (!check(r) || !r.data) return
+    const t = await refresh()
+    if (t) setSelectedKey(landing(t, r.data))
+    setInfo(`Added notebook "${r.data}" from the backup`)
   }
 
   // ----- page / whiteboard mode -----
@@ -417,14 +574,25 @@ export function App() {
         onDeleteNotebook={() => notebook && void remove(notebook.name)}
         onRevealNotebook={() => notebook && void showInFolder(notebook.name)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onShortcuts={() => setShortcutsOpen(true)}
+        onBackup={() => notebook && void backup(notebook.name)}
+        onRestoreBackup={() => void restoreBackup()}
+        onTrash={() => setTrashOpen(true)}
+        onHistory={() => selectedKind === 'page' && selectedKey && setHistoryFor(selectedKey)}
+        onDuplicate={() => selectedKind === 'page' && selectedKey && void duplicate(selectedKey)}
+        onTemplate={() => sectionKey && setTemplateFor(sectionKey)}
+        onSnapshot={() => void snapshotToPage()}
         sidebarVisible={sidebarVisible}
         toggleSidebar={() => setSidebarVisible((v) => !v)}
         theme={theme}
         setTheme={setTheme}
-        zoom={zoom}
-        onZoom={(d) => setZoom(api.zoom(d))}
         openRootFolder={() => void openRootFolder()}
         revealPage={() => selectedKey && void showInFolder(selectedKey)}
+        recent={tree ? recent.filter((k) => existsIn(tree, k) && k !== selectedKey) : []}
+        favourites={tree ? favourites.filter((k) => existsIn(tree, k)) : []}
+        isFavourite={!!selectedKey && favourites.includes(selectedKey)}
+        toggleFavourite={() => selectedKind === 'page' && selectedKey && toggleFavourite(selectedKey)}
+        openPage={openPage}
       />
       <SectionTabs
         notebook={notebook}
@@ -437,6 +605,11 @@ export function App() {
         cancelEdit={() => setEditing(null)}
         openMenu={(x, y, key) => setMenu({ x, y, key })}
         openNotebookPicker={() => setNotebookDialog({ mode: 'open' })}
+        reorder={(names) => void reorder(null, names)}
+        dropPage={(pageKey, secKey) => {
+          const { notebook: nb, section: sec } = refOf(secKey)
+          void movePage(pageKey, nb, sec!).then((err) => err && setToast(err.message))
+        }}
       />
       <div className={`layout${sidebarVisible && notebook ? '' : ' no-sidebar'}`} style={{ '--sidebar-width': `${width}px` } as React.CSSProperties}>
         {sidebarVisible && notebook && (
@@ -478,10 +651,44 @@ export function App() {
       {moving && tree && (
         <MoveDialog tree={tree} pageKey={moving} onMove={(nb, sec) => movePage(moving, nb, sec)} onClose={() => setMoving(null)} />
       )}
+      {templateFor && <TemplateDialog sectionName={nameOf(templateFor)} onCreate={(name, content) => createFromTemplate(templateFor, name, content)} onClose={() => setTemplateFor(null)} />}
+      {trashOpen && (
+        <TrashDialog
+          notify={setToast}
+          onClose={() => setTrashOpen(false)}
+          onRestored={async (ref) => {
+            const t = await refresh()
+            const key = [ref.notebook, ref.section, ref.page].filter(Boolean).join('/')
+            if (t) setSelectedKey(landing(t, key))
+          }}
+        />
+      )}
+      {historyFor && (
+        <HistoryDialog
+          notebook={refOf(historyFor).notebook}
+          section={refOf(historyFor).section!}
+          page={refOf(historyFor).page!}
+          beforeRestore={flushAllSaves}
+          notify={setToast}
+          onClose={() => setHistoryFor(null)}
+        />
+      )}
+      {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
       {info && !toast && (
         <div className="toast info" role="status">
-          <span>{info}</span>
-          <button className="icon-btn" aria-label="Dismiss" onClick={() => setInfo(null)}>
+          <span>{info.text}</span>
+          {info.action && (
+            <button
+              className="toast-action"
+              onClick={() => {
+                info.action!.run()
+                setInfoState(null)
+              }}
+            >
+              {info.action.label}
+            </button>
+          )}
+          <button className="icon-btn" aria-label="Dismiss" onClick={() => setInfoState(null)}>
             ×
           </button>
         </div>

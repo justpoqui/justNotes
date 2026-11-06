@@ -4,6 +4,7 @@
 
 import { BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { promises as fs } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { EngineFailure, FileEngine, IMAGE_EXTS } from './fileEngine'
@@ -58,9 +59,42 @@ export function registerIpc(engine: FileEngine): void {
     renameSection: (nb, oldName, newName) => engine.renameSection(nb, oldName, newName),
     deleteSection: (nb, name, opts) => engine.deleteSection(nb, name, { force: opts?.force === true }),
 
-    createPage: (nb, sec, name) => engine.createPage(nb, sec, name),
+    createPage: (nb, sec, name, content) => engine.createPage(nb, sec, name, content === undefined ? undefined : content),
     renamePage: (nb, sec, oldName, newName) => engine.renamePage(nb, sec, oldName, newName),
     deletePage: (nb, sec, name) => engine.deletePage(nb, sec, name),
+    duplicatePage: (nb, sec, name) => engine.duplicatePage(nb, sec, name),
+    setOrder: (nb, sec, names) => engine.setOrder(nb, sec, names),
+    appendToPage: (nb, sec, name, md) => engine.appendToPage(nb, sec, name, md),
+    listTrash: () => engine.listTrash(),
+    restoreFromTrash: (id) => engine.restoreFromTrash(id),
+    emptyTrash: (id) => engine.emptyTrash(id),
+    listVersions: (nb, sec, name) => engine.listVersions(nb, sec, name),
+    readVersion: (nb, sec, name, id) => engine.readVersion(nb, sec, name, id),
+    restoreVersion: (nb, sec, name, id) => engine.restoreVersion(nb, sec, name, id),
+    exportNotebook: async (nb) => {
+      const name = String(nb)
+      const win = BrowserWindow.getFocusedWindow()
+      const opts = {
+        title: 'Back up notebook',
+        defaultPath: path.join(os.homedir(), 'Documents', `${name.replace(/[\\/:*?"<>|]+/g, '-')} (justNotes backup).zip`),
+        filters: [{ name: 'Zip', extensions: ['zip'] }]
+      }
+      const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
+      if (r.canceled || !r.filePath) return null
+      await fs.writeFile(r.filePath, await engine.exportNotebook(name))
+      return r.filePath
+    },
+    importNotebook: async () => {
+      const win = BrowserWindow.getFocusedWindow()
+      const opts = { title: 'Restore a notebook backup', properties: ['openFile' as const], filters: [{ name: 'Zip', extensions: ['zip'] }] }
+      const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      if (r.canceled || !r.filePaths[0]) return null
+      const file = r.filePaths[0]
+      const st = await fs.stat(file)
+      if (st.size > 500 * 1024 * 1024) throw new EngineFailure('IO_ERROR', 'That backup is too large (over 500 MB).')
+      const base = path.basename(file, path.extname(file)).replace(/ \(justNotes backup\)$/, '')
+      return engine.importNotebook(new Uint8Array(await fs.readFile(file)), base)
+    },
     movePage: (nb, sec, name, toNb, toSec) => engine.movePage(nb, sec, name, toNb, toSec),
     readPage: (nb, sec, name) => engine.readPage(nb, sec, name),
     writePage: (nb, sec, name, content) => engine.writePage(nb, sec, name, content),

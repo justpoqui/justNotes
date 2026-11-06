@@ -10,6 +10,8 @@ export interface BoardControls {
   activeTool(): string
   undo(): void
   redo(): void
+  /** A PNG picture of the whole whiteboard (null when it's empty). */
+  snapshot(): Promise<Blob | null>
   /** Called whenever the board's state changes. Returns an unsubscribe function. */
   subscribe(callback: () => void): () => void
 }
@@ -50,6 +52,8 @@ export function clearActivePage(owner: Partial<ActivePage>): void {
     listeners.forEach((l) => l())
   }
 }
+
+export const getActivePage = (): ActivePage => current
 
 export function useActivePage(): ActivePage {
   return useSyncExternalStore(

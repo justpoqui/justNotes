@@ -53,3 +53,18 @@ export const Find = I(<><circle cx="8.5" cy="8.5" r="5" /><path d="m12.3 12.3 4.
 export const Replace = I(<><circle cx="7" cy="7" r="3.8" /><path d="m9.9 9.9 2.6 2.6" /><path d="M11 15.5h6M14.5 13l2.5 2.5-2.5 2.5" /></>)
 export const Pdf = I(<><path d="M5 2.5h6l4 4v11H5z" /><path d="M11 2.5v4h4" /><text x="10" y="14.8" fontSize="4.6" textAnchor="middle" fill="currentColor" stroke="none" fontFamily="system-ui" fontWeight="700">PDF</text></>)
 export const Gear = I(<><circle cx="10" cy="10" r="2.5" /><path d="M8.6 2.8h2.8l.4 2 1.5.9 1.9-.8 1.4 2.4-1.5 1.4v1.7l1.5 1.4-1.4 2.4-1.9-.8-1.5.9-.4 2H8.6l-.4-2-1.5-.9-1.9.8-1.4-2.4 1.5-1.4V9.1L3.4 7.7l1.4-2.4 1.9.8 1.5-.9z" /></>)
+export const Backup = I(<><path d="M4 13v3h12v-3" /><path d="M10 3v9M6.5 8.5 10 12l3.5-3.5" /></>)
+export const RestoreBackup = I(<><path d="M4 13v3h12v-3" /><path d="M10 12V3M6.5 6.5 10 3l3.5 3.5" /></>)
+export const Bin = I(<><path d="M4 6h12M8 6V4h4v2M5.5 6l.8 10h7.4l.8-10" /><path d="M8 10.5c1-1.4 3-1.4 4 0M12 10.5V9M12 10.5h-1.4" /></>)
+export const History = I(<><path d="M3.5 10a6.5 6.5 0 1 0 2-4.7" /><path d="M3 3.5v3h3" /><path d="M10 6.5V10l2.5 1.5" /></>)
+export const Duplicate = I(<><rect x="6.5" y="6.5" width="10" height="10" rx="1.5" /><path d="M13.5 6.5V4.5A1.5 1.5 0 0 0 12 3H4.5A1.5 1.5 0 0 0 3 4.5V12a1.5 1.5 0 0 0 1.5 1.5h2" /></>)
+export const Keyboard = I(<><rect x="2.5" y="5" width="15" height="10" rx="1.5" /><path d="M5.5 8h1M9.5 8h1M13.5 8h1M5.5 11h1M13.5 11h1M8.5 11h3" /></>)
+export const Template = I(<><path d="M5 2.5h6l4 4v11H5z" /><path d="M11 2.5v4h4M7.5 9.5h5M7.5 12h5M7.5 14.5h3" /></>)
+export const Snapshot = I(<><rect x="2.5" y="5" width="15" height="10.5" rx="1.5" /><circle cx="10" cy="10.2" r="2.7" /><path d="M7 5l1-1.8h4L13 5" /></>)
+export const Clock = I(<><circle cx="10" cy="10" r="7" /><path d="M10 6v4l2.5 2" /></>)
+export const Star = I(<path d="m10 3 2.1 4.4 4.9.6-3.6 3.4.9 4.8L10 13.9l-4.3 2.3.9-4.8L3 8l4.9-.6z" />)
+export const StarFilled = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
+    <path d="m10 3 2.1 4.4 4.9.6-3.6 3.4.9 4.8L10 13.9l-4.3 2.3.9-4.8L3 8l4.9-.6z" />
+  </svg>
+)

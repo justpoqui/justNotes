@@ -1,165 +1,123 @@
 # justNotes
 
-A local-first desktop notebook for Linux: Zim-style storage (plain Markdown files
-on disk), OneNote-style organization (Notebook → Section → Page), and later an
-AFFiNE-style block editor and whiteboard. No accounts, no cloud, no network calls.
+A local-first notebook for Linux. Your notes are plain Markdown files in folders, organised OneNote-style as **Notebook → Section → Page**. Pages are edited in a modern block editor and each page can have a whiteboard. There are no accounts and no cloud, and the app never connects to the internet.
 
 ```
-~/Documents/justNotes/<Notebook>/<Section>/<Page>.md
-~/Documents/justNotes/<Notebook>/<Section>/<Page>.canvas.json   (whiteboard)
+~/Documents/justNotes/<Notebook>/<Section>/<Page>.md            ← the page (plain Markdown)
+~/Documents/justNotes/<Notebook>/<Section>/<Page>.canvas.json   ← its whiteboard (Excalidraw format)
+~/Documents/justNotes/<Notebook>/<Section>/assets/              ← pictures used in that section
 ```
 
-## Status
+Your notes stay readable without the app: open any `.md` file in a text editor or another Markdown app.
 
-**Status bar and auto-scroll:**
+## Install
 
-- **Status bar** along the bottom of the window:
-  - word and character counts for the open page, or "12 of 340 words" for a selection
-  - undo and redo
-  - **page zoom** (50–200%) with − / + buttons, a slider and a percentage. Click the percentage to reset to 100%.
-  - The page zoom only enlarges the page and is remembered. View → App size still scales the whole app.
-- **Auto-scroll while typing:** the page scrolls before the cursor reaches the bottom edge, keeping your line about 160 px above the status bar. It also keeps the cursor clear of the bar at the top.
+**Installable app (recommended).** Run `npm run package` to build:
 
-**Proofing, Find & Replace, PDF, more formatting, Settings:**
+- `dist/justnotes_<version>_amd64.deb`: install it with `sudo apt install ./dist/justnotes_*.deb`. justNotes then appears in your app menu under Office.
+- `dist/justNotes-<version>.AppImage`: a single file that runs without installing. Make it executable (`chmod +x`), then double-click it.
 
-- **Spell-check:** a red wavy underline marks misspelled words. Right-click one for suggestions, **Add to dictionary** or **Ignore**. It uses a bundled English (US) Hunspell dictionary, so it works offline.
-- **AutoCorrect** runs when you type a space or punctuation after a word:
-  - your own replacements (Settings → AutoCorrect) are checked first
-  - then a built-in list of ~170 common typos (teh → the, recieve → receive, dont → don't)
-  - then, optionally, a word that is **one letter off from exactly one** real word (definitly → definitely)
-  - anything less certain only gets the underline, with suggestions on right-click
-- **AutoFormat:** (c) → ©, (tm) → ™, ` -- ` → –, `->` → →, `...` → …, `1/2` → ½, `!=` → ≠, and “smart quotes”.
-- **Ctrl+Z straight after any automatic change** puts back exactly what you typed. That word is then left alone for the rest of the session.
-- **Find & Replace:** Ctrl+F / Ctrl+H, or Home → Find / Replace. Includes match case, whole words, and replace one or all.
-- **Export PDF** under File.
-- **Formatting** added to the Home tab:
-  - underline, saved as `<u>…</u>`
-  - font family from your installed fonts (no downloads), saved in the same `<span style>` as size and colour
-  - align left / center / right / justify. A centered paragraph is saved as `<div align="center">` around normal Markdown, which GitHub shows too.
-- **Settings** (File → Settings or Ctrl+,):
-  - theme, page font and size, word count, autosave timing
-  - turning each proofing feature on or off
+**From the source folder.** `./run.sh` installs Node.js and the packages if needed, builds when the code has changed, and starts the app. If Electron stops with a sandbox error on Chromebook Linux, use `./run.sh --noSandbox`.
+
+## Using it
+
+### Notebooks, sections and pages
+
+- **One notebook is open at a time.**
+  - Switch notebooks with **File → Open** or the **Notebook: name ▾** button.
+  - **File** also has New, Rename, Delete, **Back up** (save the notebook as a `.zip`) and **Restore** (add a notebook from a backup).
+- **Sections are coloured tabs** under the ribbon:
+  - **+** adds a section, double-click renames one, and dragging a tab reorders it.
+  - Drop a page onto a tab to move the page there.
+- **The sidebar lists the pages** of the selected section:
+  - Drag pages, or use **Alt+↑/↓**, to reorder them.
+  - Double-click or **F2** renames a page.
+  - Right-click a page for **Duplicate**, **Move…**, **Page history…**, **Add to Favourites** and more.
+- **New pages:** **Ctrl+N** for a blank page, or **Insert → From template** for meeting notes, daily journal, to-do list, project plan or study notes.
+- **Recycle bin:** deleting moves things to **File → Recycle bin**, where they're kept for 30 days. A deleted page can also be brought back with **Undo** on the notice that appears.
+- **Page history:** while you edit, a copy of the page is kept every 10 minutes, and the last 50 copies are kept. Use **File → History** to preview and restore an earlier version.
+- **Recent and Favourite pages:** **View → Recent / Favourites**. **Star page** adds the open page to Favourites.
+
+### Writing
+
+- Type **/** for blocks: headings, to-do lists, bullets, numbers, quotes, code, tables, dividers and pictures. Markdown shortcuts work too (`# `, `- `, `[ ] `, ```` ``` ````, `**bold**`).
+- **Home tab:**
+  - font, size, bold/italic/underline/strike, text colour, highlight
+  - lists, indent, alignment, styles, **Find & Replace**
+- **Selecting text** shows a small toolbar with the most-used formatting.
+- **Pictures:** paste, drag in, or use Insert → Picture. They're stored in the section's `assets/` folder.
+- **Spell-check** (English US or UK, offline). Right-click a word for suggestions, **Add to dictionary** or **Ignore**.
+- **AutoCorrect** fixes common typos (teh → the), your own replacements, and words one letter off from exactly one real word.
+- **AutoFormat** turns (c) into ©, -- into –, -> into →, ... into … and straight quotes into “curly” ones.
+- **Ctrl+Z straight after any automatic change** puts back exactly what you typed.
+- Pages **save by themselves** shortly after you stop typing. They also save when you switch pages and when you close the app, and Ctrl+S saves immediately.
+
+### Whiteboard
+
+- Each page has a whiteboard: use the **Page / Whiteboard** switch above the page.
+- The **Draw** tab has the drawing tools.
+- **Draw → Add to page** puts a picture of the whiteboard at the end of the page.
+
+### Status bar, view and settings
+
+- **Status bar** (bottom): word and character counts, undo/redo, and **page zoom**. Ctrl+= / Ctrl+− / Ctrl+0 and Ctrl+mouse wheel also zoom the page.
+- **View tab:** sidebar on/off, dark/light theme, Recent, Favourites.
+- **File → Settings** (Ctrl+,):
+  - app size, page font and text size, autosave timing
+  - spell-check language and every proofing option
   - your AutoCorrect list and personal dictionary
+- **F1** shows all keyboard shortcuts.
+- **Export PDF** (File tab) saves the open page as a clean, printable PDF.
 
-**Moving pages, own title bar, notes folder renamed:**
+## How your files are stored
 
-- **Moving pages.** Use **Move…** in a page's ⋯ menu (or right-click a page) to send it to another section in this notebook or another one.
-  - Its whiteboard goes with it.
-  - Images it shows are copied to the new section's `assets/` folder and the links updated. The originals stay in place, since other pages may use them.
-- **Own title bar.** The system's white title bar is gone. Minimise, maximise and close are at the top-right of the app's dark top bar, and that bar is also where you drag the window. Close saves any unsaved edits first.
-- **Notes folder renamed.** Notes now live in `~/Documents/justNotes`. On first start the old `~/WikiBook/Notebooks` is moved there in a single step. It never overwrites an existing folder, and if the move fails the app keeps using the old one.
-- **Spellchecker off.** Chromium's spellchecker downloads its dictionaries from Google, so it's turned off to keep the app fully offline.
-
-**One notebook at a time, section tabs, text colour/size/highlight** are done:
-
-- **One notebook at a time.** Only the open notebook is shown. Switch with **File → Open notebook** (or click **Notebook: _name_ ▾** under the ribbon). **File** also has New, Rename and Delete notebook. The app reopens where you left off.
-- **Sections are coloured tabs** under the ribbon, next to the notebook name:
-  - click to switch, **+** to add, double-click (or F2) to rename, right-click for more
-  - the app remembers the last page you had open in each section
-- **The sidebar lists the pages** of the selected section: **+** to add, double-click/F2 to rename, Delete to delete, right-click for more. ✎ marks pages that have a whiteboard.
-- **Home → Font** has three controls. Since Markdown has no native way to store them, they're saved as small inline HTML tags that most Markdown viewers still display, and the app reloads them exactly:
-
-  | Control | Saved in the file as |
-  |---|---|
-  | Font size | `<span style="font-size: 24px">…</span>` |
-  | Font colour | `<span style="color: #e06c75">…</span>` |
-  | Yellow highlight | `==…==` |
-  | Other highlight colours | `<mark style="background-color: …">…</mark>` |
-
-**Whiteboard, ribbon and dark theme** are done:
-
-- **Whiteboard per page:** switch with the **Page / Whiteboard** toggle at the top right of a page, or the **Draw** tab.
-  - Drawings are saved as `<Page>.canvas.json` next to the page's `.md`. That's standard Excalidraw JSON, so excalidraw.com can open it too.
-  - The file is only created once you draw something. Renaming or deleting the page renames or deletes its whiteboard too.
-  - The app remembers which pages you last viewed as a whiteboard.
-- **Ribbon (top bar) tabs:**
-  - **Home:** undo/redo, bold, italic, strike, code, clear formatting, style gallery (Normal, Heading 1–3), bullets, numbering, to-do, quote, indent/outdent.
-  - **Insert:** new page, section or notebook; table, picture, code block, divider, link.
-  - **Draw:** page/whiteboard switch and whiteboard tools (select, pan, pen, box, circle, arrow, text, picture, eraser).
-  - **View:** show/hide the sidebar, dark/light theme, zoom, open the justNotes folder, show the page file.
-- **Dark theme** is the default: soft greys, off-white text and a gentle blue accent. Light is available under View.
-- **Still fully offline:** the whiteboard's fonts are bundled with the app. Excalidraw's built-in download from the internet is removed at build time (`electron.vite.config.ts`). The automated test checks that no network requests are made.
-
-**Phase 3 (block editor)** is done. Pages open in a TipTap block editor and save back to the same `.md` file.
-
-- **Autosave** happens 0.6 s after you stop typing. It also saves immediately on Ctrl+S, when you switch pages, before a page is renamed or deleted, and when the window closes. A crash mid-save can't corrupt a note, because the app writes a temp file and swaps it in.
-- **Blocks:** type `/` for the block menu (text, headings, to-do list, bullets, numbers, quote, code, divider, table, image). Markdown shortcuts also work as you type: `# `, `## `, `- `, `1. `, `[ ] `, `> `, ```` ``` ````, `---`, `**bold**`, `*italic*`.
-- **Formatting toolbar:** appears when you select text (bold, italic, strike, code, H1/H2, link). Ctrl+click a link to open it in your browser.
-- **Drag handle** (⠿) on the left of each block to move it.
-- **Images:** paste, drag in, or use `/image`. They're copied to `<Section>/assets/` and linked as `![](assets/name.png)`, so they also show up in other Markdown viewers.
-- **`[[Wiki Links]]`** typed in a page are kept exactly and shown as chips.
-- **Readable files:** text is only escaped where Markdown actually needs it, so `snake_case`, `5 * 3` and `fish & chips` stay as typed.
-- **Your existing notes are protected:**
-  - A file is only rewritten after you actually edit it.
-  - YAML front-matter is kept untouched.
-  - Pages containing HTML, footnotes or reference-style links open read-only with a notice. You can choose "Edit anyway".
-  - If another program changes the open page, it reloads. If you also have unsaved edits, you choose which version to keep.
-- **Offline:** images from the internet are not loaded.
-
-**Phase 2 (sidebar tree)**:
-
-- Collapsible Notebook → Section → Page tree. It remembers which folders are open, the selected item and the sidebar width (drag the edge to resize; double-click resets).
-- Create and rename happen inline in the tree. Use the **+** and **⋯** buttons on hover, right-click, or the keyboard:
-
-  | Key | Action |
-  |---|---|
-  | ↑ / ↓, Home / End | Move through the tree |
-  | → / ← | Expand / collapse (or go to child / parent) |
-  | Enter | Expand or collapse a folder |
-  | F2, or double-click a page | Rename |
-  | Delete | Delete (always asks first for pages and non-empty folders) |
-  | Menu key | Open the context menu |
-
-- The right pane shows the selected page as read-only Markdown (the editor is Phase 3), or cards listing a notebook's sections or a section's pages.
-- The tree and the open page refresh on their own when files change outside the app, e.g. in Thunar or another editor.
-
-**Phase 1 (file engine)**:
-
-- `src/main/fileEngine.ts`: create, rename, delete and read notebooks, sections and pages. This is the only code that touches the disk.
-- `src/main/watcher.ts`: watches the justNotes folder and tells the UI to refresh.
-- `src/main/ipc.ts`: exposes the engine over IPC. Every call returns `{ ok, data | error }`.
-- `src/preload/index.ts`: exposes `window.wiki` through `contextBridge` (contextIsolation on, nodeIntegration off, sandbox on).
-- `src/renderer/`: the React UI (`components/Sidebar.tsx`, `components/PageView.tsx`, `components/PageEditor.tsx`, `App.tsx`). The editor's extensions and Markdown handling are in `src/renderer/src/editor/`.
-- `src/main/assetProtocol.ts`: serves images from inside the justNotes folder to the editor (`wiki-file://`), and nothing else.
-
-Rules the engine enforces:
-
-| Situation | Behaviour |
+| What | Saved in the `.md` file as |
 |---|---|
-| Duplicate name at the same level | `DUPLICATE` error. Matching ignores case, so `Work` and `work` can't both exist. |
-| Invalid characters `/ \ : * ? " < > \| [ ] #`, control chars, leading `.` or trailing `.`, empty, > 120 chars | `INVALID_NAME` with the reason |
-| Deleting a non-empty notebook or section | `NOT_EMPTY` error with a count of what's inside; the UI asks for confirmation and then deletes with `force` |
-| Item missing on disk (e.g. deleted in the file manager) | `NOT_FOUND` |
-| Renaming or deleting a page | Its `.canvas.json` whiteboard file is renamed or deleted too. A rename also updates the default `# Title` heading. |
+| Normal text, headings, lists, to-dos, tables, code, links, pictures | Standard Markdown |
+| Highlight | `==text==` (coloured highlights: `<mark style="…">`) |
+| Font, size, text colour | `<span style="…">text</span>` |
+| Underline | `<u>text</u>` |
+| Centered / right-aligned paragraph | `<div align="center">` around normal Markdown |
+| `[[Wiki links]]` from other apps | Kept exactly as written |
 
-`[ ] #` are reserved because they will break `[[Wiki Links]]` / `[[Page#Heading]]`
-in Phase 4. The other characters are rejected so that notes stay portable to USB
-drives and Windows.
+**Hidden bookkeeping** (all inside your notes folder):
 
-## Setup (Linux Mint / Chromebook Linux)
-
-Requires Node.js 20+ (22 recommended):
-
-```bash
-./run.sh           # installs Node.js and packages if needed, builds if the code changed, then starts the app
-```
-
-For development with hot reload use `npm run dev`. The packaged build (`./run.sh` / `npm start`) is the one that is fully offline.
-
-or by hand: `npm install && npm run dev`. If Electron exits with a sandbox error on
-Chromebook Linux, use `./run.sh --noSandbox`.
-
-To use a throwaway folder instead of `~/Documents/justNotes`:
-
-```bash
-JUSTNOTES_ROOT=/tmp/justnotes-test ./run.sh
-```
-
-Other scripts:
-
-| Script | What it does |
+| File or folder | What it holds |
 |---|---|
-| `npm test` | Unit and Markdown round-trip tests |
-| `npm run test:stress` | Stress tests: 10,000 pages, 200 overlapping saves, races, a 1,000-file storm, and 400 random documents saved and reloaded (more with `FUZZ_N=2000 FUZZ_SEED=7`) |
-| `npm run typecheck` | Type-checks the code |
+| `.order.json` | Your custom section and page order |
+| `<Section>/.history/` | Page history |
+| `.trash/` | The recycle bin |
+
+**Safety:**
+- Saves are atomic, so a crash or power cut can't leave a half-written note.
+- Files are only rewritten when you actually edit them.
+- YAML front-matter is kept untouched.
+- Pages containing other HTML or footnotes open read-only until you choose to edit them.
+
+## Privacy
+
+justNotes makes **no network connections**:
+- Every web request is blocked at the app's network layer.
+- Chromium's online dictionary download is disabled.
+- The spell-check dictionaries and whiteboard fonts are bundled with the app.
+- Links you Ctrl+click open in your normal browser.
+
+## For developers
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Development mode with hot reload |
 | `npm run build` | Builds the app |
+| `npm start` | Runs the built app |
+| `npm run package` | Builds the `.deb` and the AppImage into `dist/` |
+| `npm test` | Unit and Markdown round-trip tests |
+| `npm run test:stress` | Stress tests and a randomised save/reload test (`FUZZ_N=2000 FUZZ_SEED=7` for more) |
+| `npm run typecheck` | Type-checks the code |
+
+- **Notes folder for testing:** use `JUSTNOTES_ROOT=/some/folder` to try things on a throwaway folder.
+- **App icon:** `build/icon.png`. See `build/README.md`.
+
+**Code layout:**
+- `src/main/`: file engine and storage (`fileEngine.ts`), IPC, file watcher, PDF export, network and file-access rules
+- `src/preload/`: the small, typed bridge the window is allowed to use (`window.wiki`)
+- `src/renderer/`: the React app, with the editor in `editor/`, proofing in `proofing/` and the screens in `components/`

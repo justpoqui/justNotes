@@ -1,7 +1,7 @@
 // Left sidebar: the pages of the selected section (sections are the tabs above,
 // the notebook is chosen from File ▸ Open notebook).
 
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { Kind } from '../lib/tree'
 import { Dots, PageIcon, Plus } from './Icons'
 import { InlineInput } from './InlineInput'
@@ -25,6 +25,19 @@ export interface SidebarActions {
   cancelEdit(): void
   remove(key: string): void
   openMenu(x: number, y: number, key: string | null): void
+  /** New order of the section's pages (names). */
+  reorder(names: string[]): void
+}
+
+/** Drag-and-drop data type for a page (its key), also accepted by the section tabs. */
+export const PAGE_DRAG = 'application/x-justnotes-page'
+
+/** `list` with `item` moved to just before `before` (or to the end). */
+export function moveInList(list: string[], item: string, before: string | null): string[] {
+  const rest = list.filter((x) => x !== item)
+  const at = before === null ? rest.length : rest.indexOf(before)
+  rest.splice(at < 0 ? rest.length : at, 0, item)
+  return rest
 }
 
 interface Props {
@@ -39,6 +52,10 @@ interface Props {
 
 export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, actions }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
+  // Where a dragged page would land: before this page key (null = at the end).
+  const [dropBefore, setDropBefore] = useState<string | null | undefined>(undefined)
+  const dragging = useRef<string | null>(null)
+  const names = pages.map((p) => p.name)
 
   // Keep keyboard focus on the selected page when moving with the arrow keys,
   // and give it back after an inline rename/create closes.
@@ -55,6 +72,17 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
     const i = pages.findIndex((p) => p.key === selectedKey)
     const go = (j: number) => actions.select(pages[Math.max(0, Math.min(pages.length - 1, j))].key)
     const current = pages[i]
+    // Alt+↑ / Alt+↓ moves the selected page in the list.
+    if (e.altKey && current && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault()
+      const j = i + (e.key === 'ArrowUp' ? -1 : 1)
+      if (j < 0 || j >= pages.length) return
+      const order = [...names]
+      order.splice(i, 1)
+      order.splice(j, 0, current.name)
+      actions.reorder(order)
+      return
+    }
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
@@ -145,6 +173,32 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
               tabIndex={p.key === focusable ? 0 : -1}
               title={p.path}
               onClick={() => actions.select(p.key)}
+              draggable={!renaming}
+              onDragStart={(e) => {
+                dragging.current = p.name
+                e.dataTransfer.setData(PAGE_DRAG, p.key)
+                e.dataTransfer.setData('text/plain', p.name)
+                e.dataTransfer.effectAllowed = 'move'
+              }}
+              onDragEnd={() => {
+                dragging.current = null
+                setDropBefore(undefined)
+              }}
+              onDragOver={(e) => {
+                if (!dragging.current) return
+                e.preventDefault()
+                const r = e.currentTarget.getBoundingClientRect()
+                const idx = pages.findIndex((x) => x.key === p.key)
+                setDropBefore(e.clientY < r.top + r.height / 2 ? p.name : (pages[idx + 1]?.name ?? null))
+              }}
+              onDrop={(e) => {
+                if (!dragging.current) return
+                e.preventDefault()
+                const order = moveInList(names, dragging.current, dropBefore ?? null)
+                setDropBefore(undefined)
+                if (order.join('/') !== names.join('/')) actions.reorder(order)
+              }}
+              data-drop={dropBefore === p.name ? 'before' : dropBefore === null && p.key === pages[pages.length - 1]?.key ? 'after' : undefined}
               onDoubleClick={(e) => {
                 e.preventDefault()
                 actions.startRename(p.key)

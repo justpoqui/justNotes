@@ -22,8 +22,6 @@ interface Props {
   toggleSidebar(): void
   theme: 'dark' | 'light'
   setTheme(theme: 'dark' | 'light'): void
-  zoom: number
-  onZoom(direction: 'in' | 'out' | 'reset'): void
   openRootFolder(): void
   revealPage(): void
   onOpenNotebook(): void
@@ -31,6 +29,21 @@ interface Props {
   onDeleteNotebook(): void
   onRevealNotebook(): void
   onOpenSettings(): void
+  onShortcuts(): void
+  onBackup(): void
+  onRestoreBackup(): void
+  onTrash(): void
+  onHistory(): void
+  onDuplicate(): void
+  onTemplate(): void
+  /** Adds a picture of the whiteboard to the page. */
+  onSnapshot(): void
+  /** Recently opened / favourite pages (keys "Notebook/Section/Page"). */
+  recent: string[]
+  favourites: string[]
+  isFavourite: boolean
+  toggleFavourite(): void
+  openPage(key: string): void
 }
 
 const TABS = ['File', 'Home', 'Insert', 'Draw', 'View'] as const
@@ -190,30 +203,35 @@ export function Ribbon(props: Props) {
         {tab === 'File' && (
           <>
             <Group label="Notebook">
-              <Btn icon={Ic.NewNotebook} label="New notebook" wide onClick={() => props.startCreate(null)} />
-              <Btn icon={Ic.Folder} label="Open notebook" wide onClick={props.onOpenNotebook} />
-              <Btn icon={Ic.Rename} label="Rename" disabled={!props.notebookKey} onClick={props.onRenameNotebook} />
-              <Btn icon={Ic.Trash} label="Delete" disabled={!props.notebookKey} onClick={props.onDeleteNotebook} />
+              <Btn icon={Ic.NewNotebook} label="New" title="New notebook" onClick={() => props.startCreate(null)} />
+              <Btn icon={Ic.Folder} label="Open" title="Open another notebook" onClick={props.onOpenNotebook} />
+              <Btn icon={Ic.Rename} label="Rename" title="Rename this notebook" disabled={!props.notebookKey} onClick={props.onRenameNotebook} />
+              <Btn icon={Ic.Trash} label="Delete" title="Move this notebook to the Recycle bin" disabled={!props.notebookKey} onClick={props.onDeleteNotebook} />
+            </Group>
+            <Group label="Backup">
+              <Btn icon={Ic.Backup} label="Back up" title="Save this notebook as a .zip file" disabled={!props.notebookKey} onClick={props.onBackup} />
+              <Btn icon={Ic.RestoreBackup} label="Restore" title="Add a notebook from a .zip backup" onClick={props.onRestoreBackup} />
+              <Btn icon={Ic.Bin} label="Recycle bin" wide title="Deleted notebooks, sections and pages (kept 30 days)" onClick={props.onTrash} />
             </Group>
             <Group label="Page">
               <Btn icon={Ic.Pdf} label="Export PDF" wide disabled={!exportPdf || props.mode !== 'page'} title="Save the open page as a PDF" onClick={() => exportPdf?.()} />
+              <Btn icon={Ic.History} label="History" title="Earlier versions of this page" disabled={!props.hasPage} onClick={props.onHistory} />
+              <Btn icon={Ic.Duplicate} label="Duplicate" title="Make a copy of this page" disabled={!props.hasPage} onClick={props.onDuplicate} />
             </Group>
             <Group label="Files">
-              <Btn icon={Ic.Reveal} label="Show notebook folder" wide disabled={!props.notebookKey} onClick={props.onRevealNotebook} />
-              <Btn icon={Ic.Folder} label="All notebooks folder" wide onClick={props.openRootFolder} />
+              <Btn icon={Ic.Reveal} label="Page file" title="Show this page's file in the file manager" disabled={!props.hasPage} onClick={props.revealPage} />
+              <Btn icon={Ic.Reveal} label="Notebook folder" wide title="Show this notebook's folder in the file manager" disabled={!props.notebookKey} onClick={props.onRevealNotebook} />
+              <Btn icon={Ic.Folder} label="All notebooks" wide title="Open the folder with all your notebooks" onClick={props.openRootFolder} />
             </Group>
             <Group label="Options">
               <Btn icon={Ic.Gear} label="Settings" title="Settings (Ctrl+,)" onClick={props.onOpenSettings} />
+              <Btn icon={Ic.Keyboard} label="Shortcuts" title="Keyboard shortcuts (F1)" onClick={props.onShortcuts} />
             </Group>
           </>
         )}
 
         {tab === 'Home' && (
           <>
-            <Group label="History">
-              <Btn icon={Ic.Undo} label="Undo" title="Undo (Ctrl+Z)" disabled={!ed && !(props.mode === 'board' && board)} onClick={() => (ed ? (ed.commands.revertAutoChange() ? undefined : chain().undo().run()) : board?.undo())} />
-              <Btn icon={Ic.Redo} label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!ed && !(props.mode === 'board' && board)} onClick={() => (ed ? chain().redo().run() : board?.redo())} />
-            </Group>
             <Group label="Font">
               <div className="rb-rows">
                 <div className="rb-row">
@@ -360,6 +378,7 @@ export function Ribbon(props: Props) {
           <>
             <Group label="Notebook">
               <Btn icon={Ic.NewPage} label="New page" disabled={!props.sectionKey} title={props.sectionKey ? 'New page in this section' : 'Select a section first'} onClick={() => props.startCreate(props.sectionKey)} />
+              <Btn icon={Ic.Template} label="From template" wide disabled={!props.sectionKey} title="New page from a template (meeting notes, journal, …)" onClick={props.onTemplate} />
               <Btn icon={Ic.NewSection} label="New section" disabled={!props.notebookKey} title={props.notebookKey ? 'New section in this notebook' : 'Select a notebook first'} onClick={() => props.startCreate(props.notebookKey)} />
             </Group>
             <Group label="Blocks">
@@ -374,10 +393,6 @@ export function Ribbon(props: Props) {
 
         {tab === 'Draw' && (
           <>
-            <Group label="View">
-              <Btn icon={Ic.PageMode} label="Page" disabled={!props.hasPage} active={props.hasPage && props.mode === 'page'} onClick={() => props.setMode('page')} />
-              <Btn icon={Ic.BoardMode} label="Whiteboard" disabled={!props.hasPage} active={props.hasPage && props.mode === 'board'} onClick={() => props.setMode('board')} />
-            </Group>
             <Group label="Tools">
               {(
                 [
@@ -388,7 +403,7 @@ export function Ribbon(props: Props) {
                   ['ellipse', 'Circle', Ic.Ellipse, 'O'],
                   ['arrow', 'Arrow', Ic.Arrow, 'A'],
                   ['text', 'Text', Ic.TextTool, 'T'],
-                  ['image', 'Picture', Ic.ImageIcon, '9'],
+                  ['image', 'Image', Ic.ImageIcon, '9'],
                   ['eraser', 'Eraser', Ic.Eraser, 'E']
                 ] as const
               ).map(([tool, label, icon, key]) => (
@@ -403,6 +418,9 @@ export function Ribbon(props: Props) {
                 />
               ))}
             </Group>
+            <Group label="Whiteboard">
+              <Btn icon={Ic.Snapshot} label="Add to page" wide disabled={!props.hasPage || props.mode !== 'board' || !board} title="Add a picture of this whiteboard to the end of the page" onClick={props.onSnapshot} />
+            </Group>
           </>
         )}
 
@@ -415,14 +433,10 @@ export function Ribbon(props: Props) {
               <Btn icon={Ic.Moon} label="Dark" active={props.theme === 'dark'} onClick={() => props.setTheme('dark')} />
               <Btn icon={Ic.Sun} label="Light" active={props.theme === 'light'} onClick={() => props.setTheme('light')} />
             </Group>
-            <Group label={`App size · ${Math.round(props.zoom * 100)}%`}>
-              <Btn icon={Ic.ZoomOut} label="Smaller" title="Make the whole app smaller (Ctrl+-). Page zoom is in the bar at the bottom." onClick={() => props.onZoom('out')} />
-              <Btn icon={Ic.ZoomReset} label="100%" title="Reset zoom (Ctrl+0)" onClick={() => props.onZoom('reset')} />
-              <Btn icon={Ic.ZoomIn} label="Bigger" title="Make the whole app bigger (Ctrl+=). Page zoom is in the bar at the bottom." onClick={() => props.onZoom('in')} />
-            </Group>
-            <Group label="Files">
-              <Btn icon={Ic.Folder} label="All notebooks folder" onClick={props.openRootFolder} wide />
-              <Btn icon={Ic.Reveal} label="Show page file" disabled={!props.hasPage} onClick={props.revealPage} wide />
+            <Group label="Go to">
+              <PageList label="Recent" icon={Ic.Clock} empty="No recent pages yet." pages={props.recent} openPage={props.openPage} />
+              <PageList label="Favourites" icon={Ic.Star} empty="No favourites yet. Use the star to add the open page." pages={props.favourites} openPage={props.openPage} />
+              <Btn icon={props.isFavourite ? Ic.StarFilled : Ic.Star} label={props.isFavourite ? 'Unstar' : 'Star page'} title={props.isFavourite ? 'Remove this page from Favourites' : 'Add this page to Favourites'} active={props.isFavourite} disabled={!props.hasPage} onClick={props.toggleFavourite} />
             </Group>
           </>
         )}
@@ -463,6 +477,54 @@ function WindowButtons() {
           <path d="m2.5 2.5 7 7m0-7-7 7" stroke="currentColor" strokeWidth="1.2" />
         </svg>
       </button>
+    </div>
+  )
+}
+
+/** A ribbon button that drops down a list of pages (Recent / Favourites). */
+function PageList({ label, icon, empty, pages, openPage }: { label: string; icon: React.ComponentType; empty: string; pages: string[]; openPage(key: string): void }) {
+  const [open, setOpen] = useState(false)
+  const wrap = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => !wrap.current?.contains(e.target as Node) && setOpen(false)
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    window.addEventListener('mousedown', close)
+    window.addEventListener('keydown', esc)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('keydown', esc)
+    }
+  }, [open])
+  return (
+    <div className="rb-pop-wrap" ref={wrap}>
+      <Btn icon={icon} label={`${label} ▾`} active={open} onClick={() => setOpen((o) => !o)} />
+      {open && (
+        <div className="rb-pop page-list" role="menu" aria-label={label}>
+          {pages.length === 0 ? (
+            <p className="muted small">{empty}</p>
+          ) : (
+            pages.map((k) => {
+              const [nb, sec, page] = k.split('/')
+              return (
+                <button
+                  key={k}
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false)
+                    openPage(k)
+                  }}
+                >
+                  <span className="pl-name">{page}</span>
+                  <span className="muted small">
+                    {nb} › {sec}
+                  </span>
+                </button>
+              )
+            })
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 // The Excalidraw canvas for one page, saved as <Page>.canvas.json next to the page.
 // The file is only created once something is actually drawn.
 
-import { Excalidraw, hashElementsVersion, MainMenu, serializeAsJSON } from '@excalidraw/excalidraw'
+import { Excalidraw, exportToBlob, hashElementsVersion, MainMenu, serializeAsJSON } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import { createPortal } from 'react-dom'
@@ -94,7 +94,13 @@ export default function WhiteboardCanvas({ notebook, section, page, theme, onErr
       activeTool: () => a.getAppState().activeTool.type,
       undo: () => clickButton('Undo'),
       redo: () => clickButton('Redo'),
-      subscribe: (cb) => a.onChange(() => cb())
+      subscribe: (cb) => a.onChange(() => cb()),
+      snapshot: async () => {
+        const elements = a.getSceneElements()
+        if (!elements.length) return null
+        // Always a light picture (it goes into the page, which may be printed / exported).
+        return exportToBlob({ elements, appState: { ...a.getAppState(), exportBackground: true, viewBackgroundColor: '#ffffff', exportWithDarkMode: false }, files: a.getFiles(), mimeType: 'image/png', exportPadding: 16 } as any)
+      }
     }
     controlsRef.current = controls
     setActivePage({ board: controls })

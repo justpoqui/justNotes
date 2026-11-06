@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, session, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeTheme, session, shell } from 'electron'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -18,6 +18,8 @@ function createWindow(): void {
     minWidth: 720,
     minHeight: 480,
     title: 'justNotes',
+    // Window / taskbar icon (installed copies also get it from their menu entry).
+    icon: app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(__dirname, '../../build/icon.png'),
     show: false,
     backgroundColor: '#1e1f22', // dark from the first frame, no white flash
     // No system title bar: the app draws its own (justNotes name, tabs and
@@ -88,6 +90,10 @@ app.whenReady().then(async () => {
   const engine = new FileEngine(await resolveNotesRoot())
   await engine.ensureRoot().catch((err) => console.error(err))
   void engine.cleanupTempFiles().catch(() => {})
+  void engine.purgeOldTrash().catch(() => {}) // recycle bin keeps things for 30 days
+  // No hidden menu: its shortcuts (Ctrl+R reload, Ctrl+Shift+I developer tools, Ctrl+± app zoom)
+  // clashed with the app's own. Copy/paste/undo work without it.
+  Menu.setApplicationMenu(null)
   registerIpc(engine)
 
   // Network rules for everything the app loads (main window, whiteboard, print/PDF page):

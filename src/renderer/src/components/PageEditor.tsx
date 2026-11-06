@@ -558,7 +558,9 @@ function FormatMenu({ editor }: { editor: Editor }) {
         <>
           {btn('B', 'Bold (Ctrl+B)', editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), 'b')}
           {btn('I', 'Italic (Ctrl+I)', editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), 'i')}
+          {btn('U', 'Underline (Ctrl+U)', editor.isActive('underline'), () => editor.chain().focus().toggleUnderline().run(), 'u')}
           {btn('S', 'Strikethrough (Ctrl+Shift+S)', editor.isActive('strike'), () => editor.chain().focus().toggleStrike().run(), 's')}
+          {btn('ab', 'Highlight (Ctrl+Shift+H)', editor.isActive('highlight'), () => editor.chain().focus().toggleHighlight().run(), 'hl')}
           {btn('</>', 'Inline code (Ctrl+E)', editor.isActive('code'), () => editor.chain().focus().toggleCode().run(), 'code')}
           <span className="sep" />
           {btn('H1', 'Heading 1', editor.isActive('heading', { level: 1 }), () => editor.chain().focus().toggleHeading({ level: 1 }).run())}

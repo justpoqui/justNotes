@@ -113,6 +113,23 @@ export function SettingsDialog({ theme, setTheme, onClose }: Props) {
                     ))}
                   </select>
                 </div>
+                <div className="set-row">
+                  <span className="set-label">
+                    App size
+                    <span className="set-hint">Makes the whole app (ribbon, sidebar, page) bigger or smaller. Page zoom is in the bar at the bottom.</span>
+                  </span>
+                  <div className="segmented">
+                    <button aria-label="Smaller" onClick={() => updateSettings({ appZoom: Math.max(0.6, Math.round((s.appZoom - 0.1) * 10) / 10) })}>
+                      −
+                    </button>
+                    <button className="selected" title="Reset to 100%" onClick={() => updateSettings({ appZoom: 1 })}>
+                      {Math.round((s.appZoom || 1) * 100)}%
+                    </button>
+                    <button aria-label="Bigger" onClick={() => updateSettings({ appZoom: Math.min(1.6, Math.round((s.appZoom + 0.1) * 10) / 10) })}>
+                      +
+                    </button>
+                  </div>
+                </div>
                 <Check label="Show word and character count" hint="In the status bar at the bottom of the window (words and characters)." checked={s.wordCount} onChange={(v) => updateSettings({ wordCount: v })} />
 
                 <h3>Saving</h3>
@@ -139,10 +156,17 @@ export function SettingsDialog({ theme, setTheme, onClose }: Props) {
                 <h3>Spelling</h3>
                 <Check
                   label="Check spelling as you type"
-                  hint="Misspelled words get a red wavy underline. Right-click one for suggestions. English (US), works offline."
+                  hint="Misspelled words get a red wavy underline. Right-click one for suggestions. Works offline."
                   checked={s.spellcheck}
                   onChange={(v) => updateSettings({ spellcheck: v })}
                 />
+                <div className="set-row">
+                  <span className="set-label">Dictionary</span>
+                  <select className="dialog-input" value={s.spellLanguage} onChange={(e) => updateSettings({ spellLanguage: e.target.value as 'en-US' | 'en-GB' })}>
+                    <option value="en-US">English (United States)</option>
+                    <option value="en-GB">English (United Kingdom)</option>
+                  </select>
+                </div>
                 <h3>AutoCorrect</h3>
                 <Check
                   label="Correct common typos as you type"

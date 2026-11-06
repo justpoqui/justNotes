@@ -1,7 +1,7 @@
 {
   "name": "justnotes",
   "version": "0.1.0",
-  "description": "Local-first notebook app: Markdown files on disk, Notebook → Section → Page.",
+  "description": "A local-first notebook: plain Markdown files, notebooks, sections, pages and whiteboards. Fully offline.",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
@@ -13,24 +13,10 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run --exclude \"tests/stress/**\"",
-    "test:stress": "vitest run tests/stress --testTimeout=300000"
+    "test:stress": "vitest run tests/stress --testTimeout=300000",
+    "package": "npm run build && electron-builder --linux AppImage deb"
   },
   "devDependencies": {
-    "@types/node": "^22.20.5",
-    "@types/nspell": "^2.1.6",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2",
-    "electron": "^45.2.1",
-    "electron-vite": "^6.0.0",
-    "happy-dom": "^21.0.4",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "typescript": "^5.9.3",
-    "vite": "^8.3.5",
-    "vitest": "^5.0.5"
-  },
-  "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
     "@tiptap/core": "^3.32.2",
     "@tiptap/extension-code-block-lowlight": "^3.32.2",
@@ -54,9 +40,27 @@
     "@tiptap/starter-kit": "^3.32.2",
     "@tiptap/suggestion": "^3.32.2",
     "@tiptap/y-tiptap": "^3.0.12",
+    "@types/node": "^22.20.5",
+    "@types/nspell": "^2.1.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "dictionary-en": "^4.0.0",
+    "dictionary-en-gb": "^3.0.0",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "happy-dom": "^21.0.4",
     "lowlight": "^3.3.0",
-    "nspell": "^2.1.5"
+    "nspell": "^2.1.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
   },
   "overrides": {
     "lodash-es": "^4.18.1",
@@ -67,6 +71,59 @@
     },
     "@excalidraw/mermaid-to-excalidraw": {
       "nanoid": "^5.1.16"
+    },
+    "app-builder-lib": {
+      "minimatch": "^11.0.5"
+    },
+    "@electron/universal": {
+      "minimatch": "^11.0.5"
     }
-  }
+  },
+  "productName": "justNotes",
+  "author": "justpoqui",
+  "homepage": "https://github.com/justpoqui/justNotes",
+  "build": {
+    "appId": "app.justnotes.desktop",
+    "productName": "justNotes",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "asar": true,
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "icon": "build/icon.png",
+      "executableName": "justnotes",
+      "synopsis": "Local-first notebook with Markdown pages and whiteboards",
+      "maintainer": "justpoqui",
+      "desktop": {
+        "entry": {
+          "StartupWMClass": "justNotes"
+        }
+      },
+      "syncDesktopName": true
+    },
+    "deb": {
+      "packageName": "justnotes"
+    },
+    "appImage": {
+      "artifactName": "justNotes-${version}.AppImage"
+    },
+    "publish": null
+  },
+  "desktopName": "justnotes.desktop"
 }

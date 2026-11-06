@@ -1,6 +1,5 @@
-// [[Wiki Link]] inline node. Phase 3 only keeps these intact (shown as a chip,
-// saved back exactly as [[Target]]); Phase 4 adds navigation, autocomplete
-// and backlinks.
+// [[Wiki Link]] text from other note apps (Obsidian, Zim, …). justNotes doesn't use
+// wiki links, but keeps existing ones exactly as written, shown as ordinary text.
 
 import { InputRule, mergeAttributes, Node } from '@tiptap/core'
 
@@ -24,8 +23,8 @@ export const WikiLink = Node.create({
   renderHTML({ node, HTMLAttributes }) {
     return [
       'span',
-      mergeAttributes(HTMLAttributes, { 'data-wiki-link': node.attrs.target, class: 'wiki-link', title: node.attrs.target }),
-      node.attrs.target
+      mergeAttributes(HTMLAttributes, { 'data-wiki-link': node.attrs.target, class: 'wiki-link' }),
+      `[[${node.attrs.target}]]`
     ]
   },
 
@@ -47,7 +46,8 @@ export const WikiLink = Node.create({
   parseMarkdown: (token) => ({ type: 'wikiLink', attrs: { target: String(token.target ?? '') } }),
   renderMarkdown: (node: { attrs?: { target?: string } }) => `[[${node.attrs?.target ?? ''}]]`,
 
-  // Typing "[[Some Page]]" turns into a link chip.
+  // Typed "[[Some Page]]" is kept as one piece, so the file keeps exactly "[[Some Page]]"
+  // (instead of escaped brackets). It looks like ordinary text.
   addInputRules() {
     return [
       new InputRule({

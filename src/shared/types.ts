@@ -51,6 +51,27 @@ export interface ItemRef {
 
 // Rename functions resolve to the final name (trimmed, ".md" removed).
 
+/** Something in the recycle bin. */
+export interface TrashItem {
+  id: string
+  kind: 'notebook' | 'section' | 'page'
+  notebook: string
+  section?: string
+  page?: string
+  /** ISO date. */
+  deletedAt: string
+  /** Pages inside (1 for a page). */
+  pages: number
+}
+
+/** An earlier saved version of a page (page history). */
+export interface PageVersion {
+  id: string
+  savedAt: string
+  size: number
+  preview: string
+}
+
 export interface DeleteOptions {
   /** Must be true to delete a folder that still has things in it. */
   force?: boolean
@@ -63,15 +84,40 @@ export interface WikiApi {
 
   createNotebook(name: string): Promise<Result<NotebookInfo>>
   renameNotebook(oldName: string, newName: string): Promise<Result<string>>
-  deleteNotebook(name: string, opts?: DeleteOptions): Promise<Result<void>>
+  deleteNotebook(name: string, opts?: DeleteOptions): Promise<Result<string>>  // → recycle-bin id
 
   createSection(notebook: string, name: string): Promise<Result<SectionInfo>>
   renameSection(notebook: string, oldName: string, newName: string): Promise<Result<string>>
-  deleteSection(notebook: string, name: string, opts?: DeleteOptions): Promise<Result<void>>
+  deleteSection(notebook: string, name: string, opts?: DeleteOptions): Promise<Result<string>>  // → recycle-bin id
 
-  createPage(notebook: string, section: string, name: string): Promise<Result<PageInfo>>
+  /** `content` (optional) is the new page's Markdown, e.g. from a template. */
+  createPage(notebook: string, section: string, name: string, content?: string): Promise<Result<PageInfo>>
   renamePage(notebook: string, section: string, oldName: string, newName: string): Promise<Result<string>>
-  deletePage(notebook: string, section: string, name: string): Promise<Result<void>>
+  deletePage(notebook: string, section: string, name: string): Promise<Result<string>>  // → recycle-bin id
+  /** Copies a page as "<name> (copy)"; resolves to the new name. */
+  duplicatePage(notebook: string, section: string, name: string): Promise<Result<string>>
+  /** Saves the order of a notebook's sections (section = null) or of a section's pages. */
+  setOrder(notebook: string, section: string | null, names: string[]): Promise<Result<void>>
+  /** Adds Markdown at the end of a page. */
+  appendToPage(notebook: string, section: string, name: string, markdown: string): Promise<Result<void>>
+
+  /** Recycle bin (deleted notebooks, sections and pages; emptied after 30 days). */
+  listTrash(): Promise<Result<TrashItem[]>>
+  restoreFromTrash(id: string): Promise<Result<ItemRef>>
+  /** Deletes one item for good, or everything when `id` is omitted. */
+  emptyTrash(id?: string): Promise<Result<void>>
+
+  /** Page history (earlier versions, kept while editing). */
+  listVersions(notebook: string, section: string, name: string): Promise<Result<PageVersion[]>>
+  readVersion(notebook: string, section: string, name: string, id: string): Promise<Result<string>>
+  /** Makes a version the current page; resolves to its text. */
+  restoreVersion(notebook: string, section: string, name: string, id: string): Promise<Result<string>>
+
+  /** Saves the notebook as a .zip (save dialog). Resolves to the path, or null if cancelled. */
+  exportNotebook(notebook: string): Promise<Result<string | null>>
+  /** Adds a notebook from a .zip backup (open dialog). Resolves to its name, or null if cancelled. */
+  importNotebook(): Promise<Result<string | null>>
+
   /** Moves a page (with its whiteboard and images) to another section. Resolves to its name. */
   movePage(notebook: string, section: string, name: string, toNotebook: string, toSection: string): Promise<Result<string>>
 
@@ -90,8 +136,8 @@ export interface WikiApi {
   /** Shows a file picker and copies the chosen image into assets/. Resolves to null if cancelled. */
   pickImage(notebook: string, section: string): Promise<Result<string | null>>
 
-  /** Window zoom: step in/out, or reset to 100%. Resolves to the new zoom factor. */
-  zoom(direction: 'in' | 'out' | 'reset'): number
+  /** Size of the whole app (1 = 100%, 0.5–2). */
+  setAppZoom(factor: number): void
   /** Makes native parts of the window (menus, dialogs, scrollbars) follow the app theme. */
   setTheme(theme: 'dark' | 'light'): Promise<Result<void>>
 

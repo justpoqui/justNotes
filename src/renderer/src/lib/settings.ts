@@ -34,8 +34,12 @@ export interface Settings {
   editorFontSize: number
   /** How long after you stop typing a page is saved, in ms. */
   autosaveDelay: number
-  /** Zoom of the page area (status bar slider), 1 = 100%. */
+  /** Zoom of the page area (status bar slider, Ctrl+= / Ctrl+-), 1 = 100%. */
   pageZoom: number
+  /** Size of the whole app (Settings → General), 1 = 100%. */
+  appZoom: number
+  /** Spell-check dictionary. */
+  spellLanguage: 'en-US' | 'en-GB'
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -51,7 +55,9 @@ export const DEFAULT_SETTINGS: Settings = {
   editorFont: '',
   editorFontSize: 16,
   autosaveDelay: 600,
-  pageZoom: 1
+  pageZoom: 1,
+  appZoom: 1,
+  spellLanguage: 'en-US'
 }
 
 let current: Settings = { ...DEFAULT_SETTINGS, ...load<Partial<Settings>>('jn.settings', {}) }

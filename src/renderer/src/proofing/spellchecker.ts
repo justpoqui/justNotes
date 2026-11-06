@@ -1,12 +1,15 @@
-// The bundled English (US) dictionary, loaded on first use. Fully offline.
+// The bundled English (US or UK) dictionaries, loaded on first use. Fully offline.
 
 import nspell from 'nspell'
-import aff from '@dictionary-en/index.aff?raw'
-import dic from '@dictionary-en/index.dic?raw'
+import affUS from '@dictionary-en/index.aff?raw'
+import dicUS from '@dictionary-en/index.dic?raw'
+import affGB from '@dictionary-en-gb/index.aff?raw'
+import dicGB from '@dictionary-en-gb/index.dic?raw'
 import { getSettings, subscribeSettings } from '../lib/settings'
 import type { SpellChecker } from './rules'
 
 let instance: ReturnType<typeof nspell> | null = null
+let instanceLang = ''
 let added = new Set<string>()
 
 /** Words the user added. Synced from settings so add/remove takes effect at once. */
@@ -18,11 +21,18 @@ function syncPersonal(): void {
   added = words
 }
 
+let subscribed = false
 export function getSpellChecker(): SpellChecker {
-  if (!instance) {
-    instance = nspell(aff, dic)
+  const lang = getSettings().spellLanguage
+  if (!instance || instanceLang !== lang) {
+    instance = lang === 'en-GB' ? nspell(affGB, dicGB) : nspell(affUS, dicUS)
+    instanceLang = lang
+    added = new Set()
     syncPersonal()
-    subscribeSettings(syncPersonal)
+    if (!subscribed) {
+      subscribed = true
+      subscribeSettings(syncPersonal)
+    }
   }
   return instance
 }
