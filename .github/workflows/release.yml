@@ -40,6 +40,19 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # On other branches, also check that the installers build (they aren't published).
+      - name: Try building the installers
+        if: github.ref != 'refs/heads/main'
+        run: |
+          npm run build
+          npx electron-builder ${{ matrix.os == 'windows-latest' && '--win nsis --x64' || '--linux AppImage deb --x64' }} --publish never
+      - name: Keep the test installer for a few days
+        if: github.ref != 'refs/heads/main' && matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-test
+          path: dist/*.exe
+          retention-days: 5
 
   prepare:
     if: github.ref == 'refs/heads/main'
