@@ -24,6 +24,7 @@ const api: WikiApi = {
   duplicatePage: call('duplicatePage'),
   setOrder: call('setOrder'),
   setNotebookOrder: call('setNotebookOrder'),
+  setPageLevels: call('setPageLevels'),
   setSectionColor: call('setSectionColor'),
   appendToPage: call('appendToPage'),
   listTrash: call('listTrash'),

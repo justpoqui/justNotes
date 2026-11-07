@@ -201,3 +201,29 @@ describe('section colors, notebook order, save a version now', () => {
     expect((await engine.listVersions('N', 'S', 'P')).length).toBeGreaterThanOrEqual(2)
   })
 })
+
+describe('subpages', () => {
+  const levels = async () => (await names()).sections[0].pages.map((p) => `${p.name}:${p.level}`)
+  beforeEach(async () => {
+    for (const n of ['Q', 'R']) await engine.createPage('N', 'S', n)
+    await engine.setOrder('N', 'S', ['P', 'Q', 'R'])
+  })
+  it('keeps levels, and a subpage is never more than one level under the page above', async () => {
+    await engine.setPageLevels('N', 'S', { Q: 1, R: 2 })
+    expect(await levels()).toEqual(['P:0', 'Q:1', 'R:2'])
+    await engine.setOrder('N', 'S', ['R', 'P', 'Q']) // a subpage moved to the top becomes a page
+    expect(await levels()).toEqual(['R:0', 'P:0', 'Q:1'])
+    expect(await code(engine.setPageLevels('N', 'S', { Q: 3 }))).toBe('INVALID_NAME')
+  })
+  it('follows renames and copies, and forgets deleted or moved pages', async () => {
+    await engine.setPageLevels('N', 'S', { Q: 1 })
+    await engine.renamePage('N', 'S', 'Q', 'Q2')
+    expect(await levels()).toEqual(['P:0', 'Q2:1', 'R:0'])
+    const copy = await engine.duplicatePage('N', 'S', 'Q2')
+    expect(await levels()).toEqual(['P:0', 'Q2:1', `${copy}:1`, 'R:0'])
+    await engine.deletePage('N', 'S', 'Q2')
+    await engine.deletePage('N', 'S', copy)
+    await engine.createPage('N', 'S', 'Q2') // a new page with the old name starts as a normal page
+    expect((await levels()).find((l) => l.startsWith('Q2'))).toBe('Q2:0')
+  })
+})

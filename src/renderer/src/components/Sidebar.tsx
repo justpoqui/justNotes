@@ -6,16 +6,20 @@ import type { Kind } from '../lib/tree'
 import { Dots, PageIcon, Plus } from './Icons'
 import { InlineInput } from './InlineInput'
 import { BoardMode } from './RibbonIcons'
+import { ancestorsOf, hasSubpages, moveBlock, stepBlock, visiblePages } from '../lib/subpages'
 
 export type Editing =
   | { mode: 'rename'; key: string; error: string | null }
-  | { mode: 'create'; parentKey: string | null; kind: Kind; error: string | null }
+  /** `under`: a new page is a subpage of this page (key). */
+  | { mode: 'create'; parentKey: string | null; kind: Kind; error: string | null; under?: string }
 
 export interface PageRow {
   key: string
   name: string
   path: string
   hasCanvas: boolean
+  /** 0 = page, 1 = subpage, 2 = sub-subpage. */
+  level: number
 }
 
 export interface SidebarActions {
@@ -28,6 +32,10 @@ export interface SidebarActions {
   openMenu(x: number, y: number, key: string | null): void
   /** New order of the section's pages (names). */
   reorder(names: string[]): void
+  /** Makes a page a subpage (+1) or less of one (-1). */
+  shiftLevel(key: string, delta: 1 | -1): void
+  /** Folds / unfolds a page's subpages. */
+  toggleFold(key: string): void
 }
 
 /** Drag-and-drop data type for a page (its key), also accepted by the section tabs. */
@@ -49,14 +57,20 @@ interface Props {
   selectedKey: string | null
   editing: Editing | null
   actions: SidebarActions
+  /** Pages whose subpages are folded away. */
+  folded: Set<string>
 }
 
-export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, actions }: Props) {
+export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, actions, folded }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
   // Where a dragged page would land: before this page key (null = at the end).
   const [dropBefore, setDropBefore] = useState<string | null | undefined>(undefined)
   const dragging = useRef<string | null>(null)
   const names = pages.map((p) => p.name)
+  const shown = visiblePages(pages, folded)
+  // When the open page is folded away, the visible page holding it is marked instead.
+  const selIndex = pages.findIndex((p) => p.key === selectedKey)
+  const holder = selIndex >= 0 && !shown.some((p) => p.key === selectedKey) ? ancestorsOf(pages, selIndex).find((k) => shown.some((p) => p.key === k)) : undefined
 
   // Keep keyboard focus on the selected page when moving with the arrow keys,
   // and give it back after an inline rename/create closes.
@@ -69,19 +83,36 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
   }, [selectedKey, editing])
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (editing || pages.length === 0) return
-    const i = pages.findIndex((p) => p.key === selectedKey)
-    const go = (j: number) => actions.select(pages[Math.max(0, Math.min(pages.length - 1, j))].key)
-    const current = pages[i]
-    // Alt+↑ / Alt+↓ moves the selected page in the list.
+    if (editing || shown.length === 0) return
+    const i = shown.findIndex((p) => p.key === selectedKey)
+    const go = (j: number) => actions.select(shown[Math.max(0, Math.min(shown.length - 1, j))].key)
+    const current = shown[i]
+    // Alt+↑ / Alt+↓ moves the selected page (with its subpages) in the list.
     if (e.altKey && current && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault()
-      const j = i + (e.key === 'ArrowUp' ? -1 : 1)
-      if (j < 0 || j >= pages.length) return
-      const order = [...names]
-      order.splice(i, 1)
-      order.splice(j, 0, current.name)
-      actions.reorder(order)
+      const order = stepBlock(pages, current.name, e.key === 'ArrowUp' ? -1 : 1)
+      if (order) actions.reorder(order)
+      return
+    }
+    // Alt+→ / Alt+← makes it a subpage of the page above / moves it back out.
+    if (e.altKey && current && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      e.preventDefault()
+      actions.shiftLevel(current.key, e.key === 'ArrowRight' ? 1 : -1)
+      return
+    }
+    // → / ← unfold / fold a page's subpages (← on a subpage goes to its page).
+    if (!e.altKey && current && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      const full = pages.findIndex((p) => p.key === current.key)
+      const parentOf = () => {
+        for (let k = i - 1; k >= 0; k--) if (shown[k].level < current.level) return k
+        return -1
+      }
+      e.preventDefault()
+      if (e.key === 'ArrowRight') {
+        if (hasSubpages(pages, full) && folded.has(current.key)) actions.toggleFold(current.key)
+        else if (hasSubpages(pages, full)) go(i + 1)
+      } else if (hasSubpages(pages, full) && !folded.has(current.key)) actions.toggleFold(current.key)
+      else if (current.level > 0) go(parentOf())
       return
     }
     switch (e.key) {
@@ -96,7 +127,7 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
         return go(0)
       case 'End':
         e.preventDefault()
-        return go(pages.length - 1)
+        return go(shown.length - 1)
       case 'F2':
         e.preventDefault()
         if (current) actions.startRename(current.key)
@@ -115,6 +146,16 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
   }
 
   const creating = editing?.mode === 'create' && editing.kind === 'page' && editing.parentKey === sectionKey
+  const newRow = (level: number) =>
+    editing?.mode === 'create' ? (
+      <div className="row editing page" style={{ '--level': level } as React.CSSProperties}>
+        <span className="fold-space" />
+        <span className="icon">
+          <PageIcon />
+        </span>
+        <InlineInput initial="" placeholder={level ? 'New subpage name' : 'New page name'} error={editing.error} onSubmit={actions.submitEdit} onCancel={actions.cancelEdit} />
+      </div>
+    ) : null
   const focusable = selectedKey && pages.some((p) => p.key === selectedKey) ? selectedKey : pages[0]?.key
 
   return (
@@ -143,14 +184,7 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
           }
         }}
       >
-        {creating && (
-          <div className="row editing">
-            <span className="icon">
-              <PageIcon />
-            </span>
-            <InlineInput initial="" placeholder="New page name" error={editing.error} onSubmit={actions.submitEdit} onCancel={actions.cancelEdit} />
-          </div>
-        )}
+        {creating && !editing.under && newRow(0)}
 
         {!sectionKey && <div className="tree-empty">No sections yet.</div>}
         {sectionKey && pages.length === 0 && !creating && (
@@ -162,12 +196,26 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
           </div>
         )}
 
-        {pages.map((p) => {
+        {shown.map((p, idx) => {
           const renaming = editing?.mode === 'rename' && editing.key === p.key
+          const full = pages.findIndex((x) => x.key === p.key)
+          const parent = hasSubpages(pages, full)
+          const isFolded = folded.has(p.key)
+          // A new subpage is typed in just below its page's own subpages.
+          const subRow = creating && editing.under ? (() => {
+            const underIdx = shown.findIndex((x) => x.key === editing.under)
+            if (underIdx < 0) return idx === shown.length - 1 ? newRow(1) : null
+            let last = underIdx
+            while (last + 1 < shown.length && shown[last + 1].level > shown[underIdx].level) last++
+            return last === idx ? newRow(Math.min(2, shown[underIdx].level + 1)) : null
+          })() : null
           return (
+            <React.Fragment key={p.key}>
             <div
-              key={p.key}
-              className={`row page${p.key === selectedKey ? ' selected' : ''}`}
+              className={`row page${p.key === selectedKey ? ' selected' : ''}${p.key === holder ? ' holds-selected' : ''}${p.level ? ' subpage' : ''}`}
+              style={{ '--level': p.level } as React.CSSProperties}
+              aria-level={p.level + 1}
+              aria-expanded={parent ? !isFolded : undefined}
               role="option"
               aria-selected={p.key === selectedKey}
               data-key={p.key}
@@ -189,17 +237,16 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
                 if (!dragging.current) return
                 e.preventDefault()
                 const r = e.currentTarget.getBoundingClientRect()
-                const idx = pages.findIndex((x) => x.key === p.key)
-                setDropBefore(e.clientY < r.top + r.height / 2 ? p.name : (pages[idx + 1]?.name ?? null))
+                setDropBefore(e.clientY < r.top + r.height / 2 ? p.name : (shown[idx + 1]?.name ?? null))
               }}
               onDrop={(e) => {
                 if (!dragging.current) return
                 e.preventDefault()
-                const order = moveInList(names, dragging.current, dropBefore ?? null)
+                const order = moveBlock(pages, dragging.current, dropBefore ?? null)
                 setDropBefore(undefined)
                 if (order.join('/') !== names.join('/')) actions.reorder(order)
               }}
-              data-drop={dropBefore === p.name ? 'before' : dropBefore === null && p.key === pages[pages.length - 1]?.key ? 'after' : undefined}
+              data-drop={dropBefore === p.name ? 'before' : dropBefore === null && p.key === shown[shown.length - 1]?.key ? 'after' : undefined}
               onDoubleClick={(e) => {
                 e.preventDefault()
                 actions.startRename(p.key)
@@ -211,6 +258,23 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
                 actions.openMenu(e.clientX, e.clientY, p.key)
               }}
             >
+              {parent ? (
+                <button
+                  className="fold"
+                  tabIndex={-1}
+                  aria-label={isFolded ? `Show the subpages of ${p.name}` : `Hide the subpages of ${p.name}`}
+                  title={isFolded ? 'Show subpages' : 'Hide subpages'}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    actions.toggleFold(p.key)
+                  }}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                >
+                  {isFolded ? '▸' : '▾'}
+                </button>
+              ) : (
+                <span className="fold-space" />
+              )}
               <span className="icon">
                 <PageIcon />
               </span>
@@ -243,6 +307,8 @@ export function Sidebar({ sectionKey, sectionName, pages, selectedKey, editing, 
                 </>
               )}
             </div>
+            {subRow}
+            </React.Fragment>
           )
         })}
       </div>

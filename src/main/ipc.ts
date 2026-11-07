@@ -66,6 +66,7 @@ export function registerIpc(engine: FileEngine): void {
     duplicatePage: (nb, sec, name) => engine.duplicatePage(nb, sec, name),
     setOrder: (nb, sec, names) => engine.setOrder(nb, sec, names),
     setNotebookOrder: (names) => engine.setNotebookOrder(names),
+    setPageLevels: (nb, sec, levels) => engine.setPageLevels(nb, sec, levels),
     setSectionColor: (nb, sec, color) => engine.setSectionColor(nb, sec, color),
     appendToPage: (nb, sec, name, md) => engine.appendToPage(nb, sec, name, md),
     listTrash: () => engine.listTrash(),

@@ -35,6 +35,7 @@ Your notes stay readable without the app: open any `.md` file in a text editor o
 - **The sidebar lists the pages** of the selected section:
   - Drag pages, or use **Alt+↑/↓**, to reorder them.
   - Double-click or **F2** renames a page.
+  - **Subpages:** right-click a page → **Make subpage** (or **Alt+→**) puts it under the page above it, up to two levels deep. **Alt+←** moves it back out, and **New subpage** adds one. Click the small arrow (or press **→ / ←**) to show or hide a page's subpages. A page moves together with its subpages.
   - Right-click a page for **Duplicate**, **Move…**, **Page history…**, **Add to Favorites** and more.
   - The heading at the top of a page is its name: change it, click elsewhere, and the page (and its file) is renamed to match.
 - **New pages:** **Ctrl+N** for a blank page, or **Insert → From template** for meeting notes, daily journal, to-do list, project plan or study notes.
@@ -98,6 +99,7 @@ Your notes stay readable without the app: open any `.md` file in a text editor o
 |---|---|
 | `.order.json` | Your custom notebook, section and page order |
 | `<Notebook>/.colors.json` | Section tab colors |
+| `<Section>/.subpages.json` | Which pages are subpages |
 | `<Section>/.history/` | Page history |
 | `.trash/` | The recycle bin |
 

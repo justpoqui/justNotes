@@ -23,6 +23,8 @@ export interface PageInfo {
   path: string
   /** True when a <Page>.canvas.json whiteboard file exists next to the page (Phase 5). */
   hasCanvas: boolean
+  /** 0 = a normal page, 1 = a subpage of the page above, 2 = a subpage of that subpage. */
+  level?: number
 }
 
 export interface SectionInfo {
@@ -101,6 +103,8 @@ export interface WikiApi {
   /** Saves the order of a notebook's sections (section = null) or of a section's pages. */
   setOrder(notebook: string, section: string | null, names: string[]): Promise<Result<void>>
   setNotebookOrder(names: string[]): Promise<Result<void>>
+  /** Which pages of a section are subpages: { page: level } (others are top-level). */
+  setPageLevels(notebook: string, section: string, levels: Record<string, number>): Promise<Result<void>>
   setSectionColor(notebook: string, section: string, color: string | null): Promise<Result<void>>
   /** Adds Markdown at the end of a page. */
   appendToPage(notebook: string, section: string, name: string, markdown: string): Promise<Result<void>>

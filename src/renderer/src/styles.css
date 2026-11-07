@@ -433,7 +433,13 @@ body.resizing-img { cursor: nwse-resize; user-select: none; }
 .section-add:hover { color: var(--fg); }
 .sidebar .badge { display: flex; color: var(--muted); flex: none; }
 .sidebar .badge svg { width: 14px; height: 14px; }
-.row.page { padding-left: 10px; }
+.row.page { --level: 0; padding-left: calc(2px + var(--level) * 18px); }
+/* Subpages: indented under their page, with a fold arrow on pages that have some. */
+.row .fold, .row .fold-space { flex: none; width: 16px; height: 20px; }
+.row .fold { display: grid; place-items: center; border: none; background: none; padding: 0; color: var(--muted); font-size: 11px; border-radius: 4px; }
+.row .fold:hover { color: var(--fg); background: var(--hover); }
+.row.holds-selected { background: color-mix(in srgb, var(--selected) 55%, transparent); }
+.row.subpage .name { color: color-mix(in srgb, var(--fg) 88%, var(--muted)); }
 .tree-empty b { color: var(--fg); }
 
 /* ---------- notebook dialog ---------- */

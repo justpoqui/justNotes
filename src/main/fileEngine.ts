@@ -37,6 +37,9 @@ export const ORDER_FILE = '.order.json'
 /** Each notebook's section colors: { "Section": "#e5a26b" }. */
 export const COLORS_FILE = '.colors.json'
 const COLOR = /^#[0-9a-f]{6}$/i
+/** Each section's subpages: { "Page": 1 } (1 = under the page above it, 2 = one level deeper). */
+export const LEVELS_FILE = '.subpages.json'
+export const MAX_LEVEL = 2
 const TRASH_KEEP_DAYS = 30
 const HISTORY_EVERY_MS = 10 * 60 * 1000
 const HISTORY_KEEP = 50
@@ -146,7 +149,7 @@ export class FileEngine {
     // the duplicate-name check (e.g. "Ideas" and "ideas" created in the same instant).
     for (const m of [
       'createNotebook', 'renameNotebook', 'deleteNotebook', 'createSection', 'renameSection', 'deleteSection',
-      'createPage', 'renamePage', 'movePage', 'deletePage', 'duplicatePage', 'setOrder', 'setNotebookOrder', 'setSectionColor', 'restoreFromTrash',
+      'createPage', 'renamePage', 'movePage', 'deletePage', 'duplicatePage', 'setOrder', 'setNotebookOrder', 'setSectionColor', 'setPageLevels', 'restoreFromTrash',
       'emptyTrash', 'importNotebook', 'restoreVersion'
     ] as const) {
       const original = (this[m] as (...args: unknown[]) => Promise<unknown>).bind(this)
@@ -293,7 +296,15 @@ export class FileEngine {
               const name = f.name.slice(0, -PAGE_EXT.length)
               return { name, path: path.join(secPath, f.name), hasCanvas: names.has(name + CANVAS_EXT) }
             })
-          sections.push({ name: sec, path: secPath, pages: sortByOrder(pages, await this.readOrder(secPath)), ...(colors[sec] ? { color: colors[sec] } : {}) })
+          const sorted = sortByOrder(pages, await this.readOrder(secPath))
+          // A subpage sits under the page above it: never more than one level deeper than that.
+          const levels = await this.readLevels(secPath)
+          let prev = -1
+          for (const p of sorted) {
+            p.level = Math.max(0, Math.min(levels[p.name] ?? 0, prev + 1, MAX_LEVEL))
+            prev = p.level
+          }
+          sections.push({ name: sec, path: secPath, pages: sorted, ...(colors[sec] ? { color: colors[sec] } : {}) })
         }
         notebooks.push({ name: nb, path: nbPath, sections: sortByOrder(sections, await this.readOrder(nbPath)) })
       }
@@ -454,6 +465,7 @@ export class FileEngine {
       wrapIo(err, `Renaming page "${oldName}"`)
     }
     await this.renameInOrder(secDir, oldName, name)
+    await this.renameLevel(secDir, oldName, name)
     return name
   }
 
@@ -502,6 +514,7 @@ export class FileEngine {
     }
     await this.removeFromOrder(fromDir, name)
     await this.addToOrder(toDir, name)
+    await this.renameLevel(fromDir, name, null)
     return name
   }
 
@@ -558,6 +571,7 @@ export class FileEngine {
     if (await this.isDir(path.join(secDir, HISTORY_DIR, name))) moves.push([path.join(secDir, HISTORY_DIR, name), 'history'])
     const id = await this.toTrash({ kind: 'page', notebook: nb, section: sec, page: name }, moves)
     await this.removeFromOrder(secDir, name)
+    await this.renameLevel(secDir, name, null)
     return id
   }
 
@@ -735,6 +749,57 @@ export class FileEngine {
     if (order.includes(from)) await this.writeOrder(dir, order.map((n) => (n === from ? to : n))).catch(() => {})
   }
 
+  // ---------- subpages ----------
+
+  private async readLevels(secDir: string): Promise<Record<string, number>> {
+    try {
+      const data = JSON.parse(await fs.readFile(path.join(secDir, LEVELS_FILE), 'utf8'))
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return {}
+      return Object.fromEntries(Object.entries(data).filter((e): e is [string, number] => Number.isInteger(e[1]) && (e[1] as number) > 0 && (e[1] as number) <= MAX_LEVEL))
+    } catch {
+      return {}
+    }
+  }
+
+  private async writeLevels(secDir: string, levels: Record<string, number>): Promise<void> {
+    const file = path.join(secDir, LEVELS_FILE)
+    if (Object.keys(levels).length === 0) {
+      await fs.rm(file, { force: true })
+      return
+    }
+    const tmp = tempPathFor(file)
+    await fs.writeFile(tmp, JSON.stringify(levels, null, 1) + '\n', 'utf8')
+    await fs.rename(tmp, file)
+  }
+
+  /** Renames (or with null, forgets) a page's subpage level. */
+  private async renameLevel(secDir: string, from: string, to: string | null): Promise<void> {
+    const levels = await this.readLevels(secDir)
+    if (!(from in levels)) return
+    if (to !== null) levels[to] = levels[from]
+    delete levels[from]
+    await this.writeLevels(secDir, levels).catch(() => {})
+  }
+
+  /** Sets which pages of a section are subpages ({ name: level }; pages not listed are top-level). */
+  async setPageLevels(nbRaw: string, secRaw: string, levels: unknown): Promise<void> {
+    const nb = existingName(nbRaw, 'notebook')
+    const sec = existingName(secRaw, 'section')
+    if (!levels || typeof levels !== 'object' || Array.isArray(levels)) throw new EngineFailure('INVALID_NAME', 'Invalid subpage levels.')
+    const clean: Record<string, number> = {}
+    for (const [name, level] of Object.entries(levels as Record<string, unknown>)) {
+      if (!Number.isInteger(level) || (level as number) < 0 || (level as number) > MAX_LEVEL) throw new EngineFailure('INVALID_NAME', 'Invalid subpage level.')
+      if ((level as number) > 0) clean[existingName(name, 'page')] = level as number
+    }
+    const secDir = this.sectionDir(nb, sec)
+    await this.requireDir(secDir, `Section "${sec}"`)
+    try {
+      await this.writeLevels(secDir, clean)
+    } catch (err) {
+      wrapIo(err, 'Saving subpages')
+    }
+  }
+
   /** Saves the order of the notebooks (File ▸ Open). */
   async setNotebookOrder(names: unknown): Promise<void> {
     if (!Array.isArray(names) || names.length > 10000 || !names.every((n) => typeof n === 'string')) throw new EngineFailure('INVALID_NAME', 'Invalid order.')
@@ -826,6 +891,9 @@ export class FileEngine {
       order.splice(at < 0 ? order.length : at + 1, 0, copy)
       await this.writeOrder(secDir, order).catch(() => {})
     }
+    // A copy of a subpage is a subpage too (it's placed right after the original).
+    const levels = await this.readLevels(secDir)
+    if (levels[name]) await this.writeLevels(secDir, { ...levels, [copy]: levels[name] }).catch(() => {})
     return copy
   }
 
@@ -1109,7 +1177,7 @@ export class FileEngine {
     await this.ensureRoot()
     nbName = await this.freeName(this.root, nbName)
     const target = this.notebookDir(nbName)
-    const allowed = (p: string) => p.endsWith(PAGE_EXT) || p.endsWith(CANVAS_EXT) || p.endsWith('/' + ORDER_FILE) || p === ORDER_FILE || p === COLORS_FILE || IMAGE_EXTS.has(path.extname(p).toLowerCase())
+    const allowed = (p: string) => p.endsWith(PAGE_EXT) || p.endsWith(CANVAS_EXT) || p.endsWith('/' + ORDER_FILE) || p === ORDER_FILE || p === COLORS_FILE || p.endsWith('/' + LEVELS_FILE) || IMAGE_EXTS.has(path.extname(p).toLowerCase())
     let written = 0
     try {
       await fs.mkdir(target)
@@ -1141,7 +1209,7 @@ export class FileEngine {
     const counts = { sections: 0, pages: 0, otherFiles: 0 }
     const walk = async (d: string, depth: number): Promise<void> => {
       for (const e of await fs.readdir(d, { withFileTypes: true })) {
-        if (e.name === HISTORY_DIR || e.name === ORDER_FILE || e.name === COLORS_FILE || TEMP_FILE.test(e.name)) continue
+        if (e.name === HISTORY_DIR || e.name === ORDER_FILE || e.name === COLORS_FILE || e.name === LEVELS_FILE || TEMP_FILE.test(e.name)) continue
         const full = path.join(d, e.name)
         // In a notebook, depth-0 folders are sections; anything else is "other".
         if (e.isDirectory()) {

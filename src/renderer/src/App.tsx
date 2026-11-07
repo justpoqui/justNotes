@@ -22,6 +22,7 @@ import { getActivePage } from './editor/activePage'
 import { ZOOM_MAX, ZOOM_MIN } from './components/StatusBar'
 import { load, save } from './lib/storage'
 import { startAutoBackup } from './lib/autoBackup'
+import { ancestorsOf, blockEnd, shiftLevel as shiftLevels } from './lib/subpages'
 import { WELCOME_NOTEBOOK, WELCOME_PAGE, WELCOME_SECTION, WELCOME_TEXT } from './lib/welcome'
 import { existsIn, isWithin, kindOf, nameOf, nearestExisting, parentOf, refOf, remapKey } from './lib/tree'
 
@@ -64,6 +65,8 @@ export function App() {
   const [recent, setRecent] = useState<string[]>(() => load('jn.recent', []))
   const [favorites, setFavorites] = useState<string[]>(() => load('jn.favourites', []))
   const [moving, setMoving] = useState<string | null>(null) // page key being moved
+  // Pages whose subpages are folded away in the sidebar (keys), remembered between runs.
+  const [folded, setFolded] = useState<Set<string>>(() => new Set(load<string[]>('jn.folded', [])))
   const [settingsOpen, setSettingsOpen] = useState(false)
   const settings = useSettings()
   const [width, setWidth] = useState(() => load('jn.sidebarWidth', 260))
@@ -85,6 +88,7 @@ export function App() {
   useEffect(() => save('jn.lastSection', lastSection), [lastSection])
   useEffect(() => save('jn.lastPage', lastPage), [lastPage])
   useEffect(() => save('jn.recent', recent), [recent])
+  useEffect(() => save('jn.folded', [...folded]), [folded])
   useEffect(() => save('jn.favourites', favorites), [favorites])
   useEffect(() => {
     save('jn.theme', theme)
@@ -281,7 +285,7 @@ export function App() {
   const sectionKey = selectedKey && selectedKind !== 'notebook' ? (selectedKind === 'page' ? parentOf(selectedKey) : selectedKey) : null
   const section = sectionKey ? notebook?.sections.find((s) => s.name === nameOf(sectionKey)) ?? null : null
   const pages: PageRow[] = useMemo(
-    () => (section && sectionKey ? section.pages.map((p) => ({ key: `${sectionKey}/${p.name}`, name: p.name, path: p.path, hasCanvas: p.hasCanvas })) : []),
+    () => (section && sectionKey ? section.pages.map((p) => ({ key: `${sectionKey}/${p.name}`, name: p.name, path: p.path, hasCanvas: p.hasCanvas, level: p.level ?? 0 })) : []),
     [section, sectionKey]
   )
 
@@ -305,6 +309,18 @@ export function App() {
       coloring.current = false
     })()
   }, [notebook, refresh])
+
+  // Opening a page that's inside a folded page (e.g. with Ctrl+P) unfolds it. (Folding the
+  // page you're in afterwards is fine: only a newly opened page unfolds things.)
+  const pagesRef = useRef(pages)
+  pagesRef.current = pages
+  useEffect(() => {
+    const list = pagesRef.current
+    const i = list.findIndex((p) => p.key === selectedKey)
+    if (i < 0) return
+    const parents = ancestorsOf(list, i)
+    setFolded((f) => (parents.some((k) => f.has(k)) ? new Set([...f].filter((k) => !parents.includes(k))) : f))
+  }, [selectedKey, section])
 
   /** Toast for a failed result; returns true if it succeeded. */
   const check = <T,>(r: Result<T>): r is { ok: true; data: T } => {
@@ -330,6 +346,12 @@ export function App() {
     setEditing({ mode: 'create', parentKey: parent, kind, error: null })
   }
 
+  /** Types the name of a new subpage of `pageKey` into the sidebar. */
+  const startSubpage = (pageKey: string) => {
+    setSidebarVisible(true)
+    setEditing({ mode: 'create', parentKey: parentOf(pageKey)!, kind: 'page', error: null, under: pageKey })
+  }
+
   const startRename = (key: string) => {
     if (kindOf(key) === 'notebook') return setNotebookDialog({ mode: 'rename', notebook: key })
     if (kindOf(key) === 'page') {
@@ -347,6 +369,7 @@ export function App() {
     setLastPage((prev) => remapRecord(prev, from, to))
     setRecent((prev) => prev.map((k) => remapKey(k, from, to)))
     setFavorites((prev) => prev.map((k) => remapKey(k, from, to)))
+    setFolded((prev) => new Set([...prev].map((k) => remapKey(k, from, to))))
   }
 
   const submitEdit = async (value: string, viaBlur: boolean) => {
@@ -376,6 +399,22 @@ export function App() {
     }
 
     const key = newKey(typeof result.data === 'string' ? result.data : result.data.name)
+    // A new subpage goes just below its page's subpages, one level under it.
+    if (editing.mode === 'create' && editing.under && sectionKey === editing.parentKey) {
+      const name = nameOf(key)
+      const i = pages.findIndex((p) => p.key === editing.under)
+      if (i >= 0) {
+        const end = blockEnd(pages, i)
+        const order = pages.map((p) => p.name)
+        order.splice(end, 0, name)
+        const levels = Object.fromEntries(pages.map((p) => [p.name, p.level]))
+        levels[name] = Math.min(2, pages[i].level + 1)
+        const { notebook: nb, section: sec } = refOf(editing.parentKey!)
+        await api.setOrder(nb, sec!, order)
+        await api.setPageLevels(nb, sec!, levels)
+        setFolded((f) => new Set([...f].filter((k) => k !== editing.under)))
+      }
+    }
     setEditing(null)
     if (editing.mode === 'rename') remapAll(editing.key, key)
     else setSelectedKey(key)
@@ -429,6 +468,13 @@ export function App() {
     }
 
     if (kind === 'page') {
+      // Its subpages stay where they are, moved up a level (they don't join the page above).
+      const i = sectionKey === parentOf(key) ? pages.findIndex((p) => p.key === key) : -1
+      if (i >= 0 && blockEnd(pages, i) > i + 1) {
+        const levels = Object.fromEntries(pages.map((p) => [p.name, p.level]))
+        for (let k = i + 1; k < blockEnd(pages, i); k++) levels[pages[k].name] = Math.max(0, pages[k].level - 1)
+        await api.setPageLevels(nb, sec!, levels)
+      }
       const r = await api.deletePage(nb, sec!, page!)
       if (check(r)) await afterDelete(r.data)
       return
@@ -539,6 +585,32 @@ export function App() {
   const showInFolder = async (key: string) => void check(await api.showInFolder(refOf(key)))
   const openRootFolder = async () => void check(await api.openRootFolder())
 
+  /** Makes a page a subpage of the page above (+1) or moves it back out (-1). */
+  const shiftLevel = async (key: string, delta: 1 | -1) => {
+    const levels = shiftLevels(pages, nameOf(key), delta)
+    if (!levels) {
+      const i = pages.findIndex((p) => p.key === key)
+      return setInfo(
+        delta < 0 ? 'This is already a normal page.' : i === 0 ? 'The first page can’t be a subpage: there’s no page above it.' : 'A subpage can only go one level under the page above it (two levels at most).'
+      )
+    }
+    const { notebook: nb, section: sec } = refOf(key)
+    const r = await api.setPageLevels(nb, sec!, levels)
+    if (!check(r)) return
+    // Show it: unfold the page it now belongs under.
+    const i = pages.findIndex((p) => p.key === key)
+    const parents = ancestorsOf(pages.map((p) => ({ ...p, level: levels[p.name] ?? 0 })), i)
+    if (parents.length) setFolded((f) => new Set([...f].filter((k) => !parents.includes(k))))
+    await refresh()
+  }
+  const toggleFold = (key: string) =>
+    setFolded((f) => {
+      const n = new Set(f)
+      if (n.has(key)) n.delete(key)
+      else n.add(key)
+      return n
+    })
+
   const sidebarActions: SidebarActions = {
     select: setSelectedKey,
     startCreate,
@@ -547,7 +619,9 @@ export function App() {
     cancelEdit: () => setEditing(null),
     remove: (k) => void remove(k),
     openMenu: (x, y, key) => setMenu({ x, y, key }),
-    reorder: (names) => void reorder(sectionKey, names)
+    reorder: (names) => void reorder(sectionKey, names),
+    shiftLevel: (k, d) => void shiftLevel(k, d),
+    toggleFold
   }
 
   const menuItems = (key: string | null): (MenuItem | MenuSwatches | 'sep')[] => {
@@ -581,6 +655,15 @@ export function App() {
       items.push(
         'sep',
         { label: 'Rename', shortcut: 'F2', onClick: () => startRename(key) },
+        { label: 'New subpage', onClick: () => startSubpage(key) },
+        ...((): MenuItem[] => {
+          const p = pages.find((x) => x.key === key)
+          if (!p) return []
+          const out: MenuItem[] = []
+          if (shiftLevels(pages, p.name, 1)) out.push({ label: 'Make subpage', shortcut: 'Alt+→', onClick: () => void shiftLevel(key, 1) })
+          if (p.level > 0) out.push({ label: p.level > 1 ? 'Move out a level' : 'Make a normal page', shortcut: 'Alt+←', onClick: () => void shiftLevel(key, -1) })
+          return out
+        })(),
         { label: 'Duplicate', onClick: () => void duplicate(key) },
         { label: 'Move…', onClick: () => setMoving(key) },
         { label: 'Page history…', onClick: () => setHistoryFor(key) },
@@ -690,7 +773,7 @@ export function App() {
       <div className={`layout${sidebarVisible && notebook ? '' : ' no-sidebar'}`} style={{ '--sidebar-width': `${width}px` } as React.CSSProperties}>
         {sidebarVisible && notebook && (
           <>
-            <Sidebar sectionKey={sectionKey} sectionName={section?.name ?? null} pages={pages} selectedKey={selectedKey} editing={editing} actions={sidebarActions} />
+            <Sidebar sectionKey={sectionKey} sectionName={section?.name ?? null} pages={pages} selectedKey={selectedKey} editing={editing} actions={sidebarActions} folded={folded} />
             <div className="resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" onMouseDown={startResize} onDoubleClick={() => setWidth(260)} />
           </>
         )}
