@@ -145,12 +145,19 @@
     },
     "nsis": {
       "artifactName": "justNotes-Setup-${version}.exe",
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "runAfterFinish": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "justNotes",
-      "deleteAppDataOnUninstall": false
+      "uninstallDisplayName": "justNotes",
+      "deleteAppDataOnUninstall": false,
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/uninstallerSidebar.bmp",
+      "include": "build/installer.nsh"
     }
   },
   "desktopName": "justnotes.desktop",

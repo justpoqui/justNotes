@@ -14,7 +14,7 @@ Your notes stay readable without the app: open any `.md` file in a text editor o
 
 Download it from the [Releases page](https://github.com/justpoqui/justNotes/releases/latest). Each release has a **Windows PC** and a **Linux** section that says which file to pick.
 
-- **Windows PC:** download `justNotes-Setup-<version>.exe` and open it. It installs for your user (no admin password needed) and adds Start menu and desktop shortcuts. If Windows says "Windows protected your PC", click **More info → Run anyway**: justNotes isn't code-signed yet.
+- **Windows PC:** download `justNotes-Setup-<version>.exe` and open it. The installer lets you pick where to install justNotes (no admin password needed for the usual place), adds Start menu and desktop shortcuts, and can start justNotes when it finishes. Uninstalling (Settings → Apps) never touches your notes. If Windows says "Windows protected your PC", click **More info → Run anyway**: justNotes isn't code-signed yet.
 - **Linux (Mint, Ubuntu, Debian):** `justnotes_<version>_amd64.deb`, installed with `sudo apt install ./justnotes_*.deb` (or double-click it on Mint). justNotes then appears in your app menu under Office. Or use `justNotes-x86_64.AppImage`: make it executable (`chmod +x`) and double-click it.
 - **ARM Chromebooks** (`uname -m` says `aarch64` in the Linux terminal): the same, with the `arm64` files.
 
@@ -73,7 +73,7 @@ On Windows, your notes are in `Documents\justNotes`; on Linux, `~/Documents/just
 ### Whiteboard
 
 - Each page has a whiteboard: use the **Page / Whiteboard** switch above the page.
-- The **Draw** tab has the drawing tools, and opens by itself when you switch to the whiteboard.
+- The **Draw** tab with the drawing tools appears while a whiteboard is open (and goes away on the page).
 - The whiteboard has its own undo, redo and zoom (bottom-left of the board).
 - **Draw → Add to page** puts a picture of the whiteboard at the end of the page.
 

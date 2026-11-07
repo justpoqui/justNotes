@@ -2,7 +2,7 @@
 
 ### 🪟 Windows PC
 
-1. Download **justNotes-Setup-{{VERSION}}.exe** (under *Assets* below) and open it. justNotes installs in a few seconds, for your user only (no admin password needed), and adds a Start menu and desktop shortcut.
+1. Download **justNotes-Setup-{{VERSION}}.exe** (under *Assets* below) and open it. The installer welcomes you, lets you choose where to install justNotes, and adds a Start menu and desktop shortcut. No admin password is needed for the usual location.
 2. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. (justNotes isn't code-signed yet, so Windows doesn't recognize the publisher.)
 
 ### 🐧 Linux (Mint, Ubuntu, Debian, Chromebook)
@@ -14,6 +14,8 @@
 
 - **.deb:** in a terminal in your Downloads folder, run `sudo apt install ./justnotes_{{VERSION}}_amd64.deb` (or `_arm64.deb`). On Mint you can also double-click it. justNotes then appears in your app menu under Office.
 - **AppImage:** right-click it → Properties → Permissions → *Allow executing*, or run `chmod +x justNotes-*.AppImage`. Then double-click it.
+
+**Uninstalling:** Windows Settings → Apps → justNotes → Uninstall. Your notes in `Documents\justNotes` are always kept.
 
 ### Already have justNotes?
 
