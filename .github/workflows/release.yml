@@ -1,0 +1,69 @@
+# Builds justNotes and publishes it as a GitHub release whenever changes reach main.
+# Installed copies find the new release (the "Update pending" button, File ▸ Updates)
+# and install it when you click Install.
+#
+# Version numbers: the "version" in package.json gives the first two parts (1.0), and each
+# release from main takes the next third part: 1.0.0, 1.0.1, 1.0.2, ...
+# Pushes to other branches only run the checks (nothing is published).
+
+name: Release
+
+on:
+  push:
+    branches: [main, phase-1-file-engine]
+    paths-ignore: ['**.md', 'build/icon-source.png']
+  workflow_dispatch:
+
+permissions:
+  contents: write # to create the release and upload the files
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # for the list of changes since the last release
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Check
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Version and release notes
+        if: github.ref == 'refs/heads/main'
+        run: |
+          BASE=$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')")
+          N=$(git tag --list "v$BASE.*" | grep -cE "^v$BASE\.[0-9]+$" || true)
+          VERSION="$BASE.$N"
+          echo "Releasing $VERSION"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          LAST=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+          # Hand-written notes for a version (build/release-notes-<version>.md) are used when present.
+          if [ -f "build/release-notes-$VERSION.md" ]; then cp "build/release-notes-$VERSION.md" release-notes.md; cat release-notes.md; exit 0; fi
+          {
+            echo "What's new in justNotes $VERSION:"
+            echo
+            if [ -n "$LAST" ]; then git log --no-merges --format='- %s' "$LAST"..HEAD; else git log --no-merges --format='- %s' -n 20; fi
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Build and publish (Linux x64 and arm64, AppImage and .deb)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run build
+          npx electron-builder --linux AppImage deb --x64 --arm64 --publish always -c.releaseInfo.releaseNotesFile=release-notes.md
