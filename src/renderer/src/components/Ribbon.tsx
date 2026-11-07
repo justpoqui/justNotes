@@ -10,6 +10,7 @@ import { updateSettings, useSettings } from '../lib/settings'
 import { load, save } from '../lib/storage'
 import * as Ic from './RibbonIcons'
 import logo from '../assets/logo.png'
+import { useUpdateState } from '../lib/updates'
 
 export type PageMode = 'page' | 'board'
 type Tool = Parameters<BoardControls['setTool']>[0]
@@ -48,6 +49,8 @@ interface Props {
   openPage(key: string): void
   /** Opens Quick open (Ctrl+P). */
   onQuickOpen(): void
+  /** Opens the Updates window. */
+  onUpdates(): void
 }
 
 const TABS = ['File', 'Home', 'Insert', 'Draw', 'View'] as const
@@ -238,6 +241,7 @@ export function Ribbon(props: Props) {
           </button>
         ))}
         <span className="titlebar-drag" />
+        <UpdatePill onClick={props.onUpdates} />
         <WindowButtons />
       </div>
 
@@ -265,6 +269,7 @@ export function Ribbon(props: Props) {
             <Group label="Options">
               <Btn icon={Ic.Gear} label="Settings" title="Settings (Ctrl+,)" onClick={props.onOpenSettings} />
               <Btn icon={Ic.Keyboard} label="Shortcuts" title="Keyboard shortcuts (F1)" onClick={props.onShortcuts} />
+              <Btn icon={Ic.Download} label="Updates" title="Check for a new version of justNotes" onClick={props.onUpdates} />
             </Group>
           </>
         )}
@@ -579,6 +584,26 @@ function tableHasHeader(editor: Editor): boolean {
     if (n.type.name === 'table') return n.firstChild?.firstChild?.type.name === 'tableHeader'
   }
   return false
+}
+
+/** "Update pending" in the title bar once a new version is downloaded (and quietly while downloading). */
+function UpdatePill({ onClick }: { onClick(): void }) {
+  const u = useUpdateState()
+  if (u.status === 'ready')
+    return (
+      <button className="update-pill" title={`Version ${u.version} is ready to install`} onClick={onClick}>
+        <span className="dot" />
+        Update pending
+      </button>
+    )
+  if (u.status === 'downloading')
+    return (
+      <button className="update-pill quiet" title={`Downloading version ${u.version}`} onClick={onClick}>
+        Downloading update… {u.percent ?? 0}%
+      </button>
+    )
+  if (u.status === 'installing') return <span className="update-pill quiet">Installing update…</span>
+  return null
 }
 
 /** Minimize / maximize / close, drawn by the app since the system title bar is hidden. */

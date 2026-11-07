@@ -12,12 +12,16 @@ Your notes stay readable without the app: open any `.md` file in a text editor o
 
 ## Install
 
-**Installable app (recommended).** Run `npm run package` to build:
+**Download it (recommended).** Every change is built automatically and published on the [Releases page](https://github.com/justpoqui/justNotes/releases/latest). Pick the file for your computer: `amd64` / `x64` for most PCs, `arm64` for ARM Chromebooks (in the Linux terminal, `uname -m` says `aarch64` on those).
 
-- `dist/justnotes_<version>_amd64.deb`: install it with `sudo apt install ./dist/justnotes_*.deb`. justNotes then appears in your app menu under Office.
-- `dist/justNotes-<version>.AppImage`: a single file that runs without installing. Make it executable (`chmod +x`), then double-click it.
+- `justnotes_<version>_amd64.deb` (or `_arm64.deb`): install it with `sudo apt install ./justnotes_*.deb`. justNotes then appears in your app menu under Office.
+- `justNotes-x86_64.AppImage` (or `-arm64`): a single file that runs without installing. Make it executable (`chmod +x`), then double-click it.
 
-**From the source folder.** `./run.sh` installs Node.js and the packages if needed, builds when the code has changed, and starts the app. If Electron stops with a sandbox error on Chromebook Linux, use `./run.sh --noSandbox`.
+**Updates.** When a new version is published, justNotes downloads it in the background and shows **Update pending** at the top right. Click it, then **Install and restart**: your pages are saved first. The `.deb` asks for your password to install; the AppImage replaces itself. **File → Updates** shows your version and has **Check now**.
+
+**Build it yourself.** `npm run package` makes the same files in `dist/`.
+
+**From the source folder.** `./run.sh` installs Node.js and the packages if needed, builds when the code has changed, and starts the app. If Electron stops with a sandbox error on Chromebook Linux, use `./run.sh --noSandbox`. A copy run this way doesn't update itself.
 
 ## Using it
 
@@ -111,11 +115,13 @@ Your notes stay readable without the app: open any `.md` file in a text editor o
 
 ## Privacy
 
-justNotes makes **no network connections**:
-- Every web request is blocked at the app's network layer.
+Your notes never leave your computer:
+- Every web request from pages and whiteboards is blocked at the app's network layer, so a web picture in a note is never fetched.
 - Chromium's online dictionary download is disabled.
 - The spell-check dictionaries and whiteboard fonts are bundled with the app.
 - Links you Ctrl+click open in your normal browser.
+
+The one exception is **looking for updates**: the installed app asks GitHub (only `github.com` and its download servers) whether a new version is published, at start-up and every few hours. Nothing about you or your notes is sent. Turn it off in **File → Updates** (untick "Check for updates automatically").
 
 ## For developers
 
@@ -125,6 +131,7 @@ justNotes makes **no network connections**:
 | `npm run build` | Builds the app |
 | `npm start` | Runs the built app |
 | `npm run package` | Builds the `.deb` and the AppImage into `dist/` |
+| (push to GitHub) | `.github/workflows/release.yml` tests, builds (x64 and arm64) and publishes a release, which installed copies then offer as an update |
 | `npm test` | Unit and Markdown round-trip tests |
 | `npm run test:stress` | Stress tests and a randomised save/reload test (`FUZZ_N=2000 FUZZ_SEED=7` for more) |
 | `npm run typecheck` | Type-checks the code |

@@ -1,3 +1,4 @@
+import { initUpdater } from './updater'
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, session, shell } from 'electron'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -95,6 +96,7 @@ app.whenReady().then(async () => {
   // clashed with the app's own. Copy/paste/undo work without it.
   Menu.setApplicationMenu(null)
   registerIpc(engine)
+  void initUpdater()
 
   // Network rules for everything the app loads (main window, whiteboard, print/PDF page):
   //  - no internet at all: every http(s)/websocket request is cancelled (except the local

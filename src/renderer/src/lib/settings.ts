@@ -52,6 +52,8 @@ export interface Settings {
   backupKeep: number
   /** When the last automatic backup was made (ISO time, '' = never). */
   lastBackup: string
+  /** Look for new versions on GitHub (at start-up and every few hours). */
+  checkUpdates: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -75,7 +77,8 @@ export const DEFAULT_SETTINGS: Settings = {
   autoBackup: 'daily',
   backupFolder: '',
   backupKeep: 10,
-  lastBackup: ''
+  lastBackup: '',
+  checkUpdates: true
 }
 
 let current: Settings = { ...DEFAULT_SETTINGS, ...load<Partial<Settings>>('jn.settings', {}) }

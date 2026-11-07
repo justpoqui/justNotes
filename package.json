@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run --exclude \"tests/stress/**\"",
     "test:stress": "vitest run tests/stress --testTimeout=300000",
-    "package": "npm run build && electron-builder --linux AppImage deb"
+    "package": "npm run build && electron-builder --linux AppImage deb --publish never"
   },
   "devDependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
@@ -60,6 +60,7 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "fflate": "^0.8.3"
   },
   "overrides": {
@@ -118,12 +119,22 @@
       "syncDesktopName": true
     },
     "deb": {
-      "packageName": "justnotes"
+      "packageName": "justnotes",
+      "artifactName": "justnotes_${version}_${arch}.deb"
     },
     "appImage": {
-      "artifactName": "justNotes-${version}.AppImage"
+      "artifactName": "justNotes-${arch}.AppImage"
     },
-    "publish": null
+    "publish": {
+      "provider": "github",
+      "owner": "justpoqui",
+      "repo": "justNotes",
+      "releaseType": "release"
+    }
   },
-  "desktopName": "justnotes.desktop"
+  "desktopName": "justnotes.desktop",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justpoqui/justNotes.git"
+  }
 }

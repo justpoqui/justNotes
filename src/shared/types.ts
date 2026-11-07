@@ -160,6 +160,11 @@ export interface WikiApi {
 
   /** Opens the justNotes folder in the system file manager. */
   openRootFolder(): Promise<Result<void>>
+  getUpdateState(): Promise<Result<UpdateState>>
+  checkForUpdates(): Promise<Result<UpdateState>>
+  /** Installs the downloaded update and restarts the app. */
+  installUpdate(): Promise<Result<void>>
+  onUpdateState(cb: (state: UpdateState) => void): () => void
   /** Opens the file manager with this notebook/section/page selected. */
   showInFolder(ref: ItemRef): Promise<Result<void>>
 
@@ -188,3 +193,22 @@ export interface WikiApi {
   /** `flush` runs (and is awaited) before the window closes. Returns an unsubscribe function. */
   onBeforeClose(flush: () => Promise<void>): () => void
 }
+
+/** Where the app is with updates (shown as "Update pending" when one is ready to install). */
+export interface UpdateState {
+  status: 'unsupported' | 'idle' | 'checking' | 'none' | 'downloading' | 'ready' | 'installing' | 'error'
+  /** This copy's version. */
+  current: string
+  /** The new version, once one is found. */
+  version?: string
+  /** What's new in it (the release notes). */
+  notes?: string
+  /** Download progress, 0–100. */
+  percent?: number
+  /** Explanation for 'unsupported' and 'error'. */
+  message?: string
+  /** When GitHub was last asked (ISO time). */
+  checkedAt?: string
+  kind?: 'appimage' | 'deb'
+}
+

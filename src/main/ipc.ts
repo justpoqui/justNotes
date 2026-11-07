@@ -10,6 +10,7 @@ import { execFile } from 'node:child_process'
 import { EngineFailure, FileEngine, IMAGE_EXTS } from './fileEngine'
 import { exportPdf } from './printing'
 import { checkBackupDir, DEFAULT_BACKUP_DIR, runBackup } from './autoBackup'
+import { checkForUpdates, getUpdateState, installUpdate } from './updater'
 import type { Result } from '../shared/types'
 
 async function wrap<T>(fn: () => Promise<T> | T): Promise<Result<T>> {
@@ -143,6 +144,9 @@ export function registerIpc(engine: FileEngine): void {
 
     exportPdf: (html, title) => exportPdf(BrowserWindow.getFocusedWindow(), String(html), String(title)),
     listFonts: () => listFonts(),
+    getUpdateState: () => getUpdateState(),
+    checkForUpdates: () => checkForUpdates(),
+    installUpdate: () => installUpdate(),
     openRootFolder: async () => {
       await engine.ensureRoot()
       const err = await shell.openPath(engine.root)

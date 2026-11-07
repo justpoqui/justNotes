@@ -1,0 +1,60 @@
+# Builds justNotes and publishes it as a GitHub release whenever changes are pushed.
+# The app finds the new release (File ▸ Updates, and the "Update pending" button) and
+# installs it when you click Install.
+#
+# Each run gets the next version number: 0.1.<run number>.
+
+name: Release
+
+on:
+  push:
+    branches: [main, phase-1-file-engine]
+    paths-ignore: ['**.md', 'build/icon-source.png']
+  workflow_dispatch:
+
+permissions:
+  contents: write # to create the release and upload the files
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # for the list of changes since the last release
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Check
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Version and release notes
+        run: |
+          VERSION="0.1.${{ github.run_number }}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          LAST=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+          {
+            echo "What's new in justNotes $VERSION:"
+            echo
+            if [ -n "$LAST" ]; then git log --no-merges --format='- %s' "$LAST"..HEAD; else git log --no-merges --format='- %s' -n 20; fi
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Build and publish (Linux x64 and arm64, AppImage and .deb)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run build
+          npx electron-builder --linux AppImage deb --x64 --arm64 --publish always -c.releaseInfo.releaseNotesFile=release-notes.md

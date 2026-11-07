@@ -82,6 +82,16 @@ const api: WikiApi = {
       }
     }
   },
+  getUpdateState: call('getUpdateState'),
+  checkForUpdates: call('checkForUpdates'),
+  installUpdate: call('installUpdate'),
+  onUpdateState: (callback) => {
+    const listener = (_e: unknown, state: Parameters<typeof callback>[0]) => callback(state)
+    ipcRenderer.on('update:state', listener)
+    return () => {
+      ipcRenderer.removeListener('update:state', listener)
+    }
+  },
   onChanged: (callback) => {
     const listener = () => callback()
     ipcRenderer.on('wiki:changed', listener)

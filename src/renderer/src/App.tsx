@@ -11,6 +11,7 @@ import { MoveDialog } from './components/MoveDialog'
 import { NotebookDialog, type NotebookDialogMode } from './components/NotebookDialog'
 import { PageView } from './components/PageView'
 import { QuickOpen } from './components/QuickOpen'
+import { UpdateDialog } from './components/UpdateDialog'
 import { Ribbon, type PageMode } from './components/Ribbon'
 import { nextSectionColor, SECTION_COLORS, SectionTabs } from './components/SectionTabs'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -61,6 +62,7 @@ export function App() {
   const [historyFor, setHistoryFor] = useState<string | null>(null) // page key
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [quickOpen, setQuickOpen] = useState(false)
+  const [updatesOpen, setUpdatesOpen] = useState(false)
   // Recently opened and favorite pages (keys), remembered between runs.
   const [recent, setRecent] = useState<string[]>(() => load('jn.recent', []))
   const [favorites, setFavorites] = useState<string[]>(() => load('jn.favourites', []))
@@ -752,6 +754,7 @@ export function App() {
         toggleFavorite={() => selectedKind === 'page' && selectedKey && toggleFavorite(selectedKey)}
         openPage={openPage}
         onQuickOpen={() => setQuickOpen(true)}
+        onUpdates={() => setUpdatesOpen(true)}
       />
       <SectionTabs
         notebook={notebook}
@@ -836,6 +839,7 @@ export function App() {
         />
       )}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {updatesOpen && <UpdateDialog onClose={() => setUpdatesOpen(false)} />}
       {quickOpen && tree && (
         <QuickOpen
           tree={tree}
