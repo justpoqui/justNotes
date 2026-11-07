@@ -209,6 +209,6 @@ export interface UpdateState {
   message?: string
   /** When GitHub was last asked (ISO time). */
   checkedAt?: string
-  kind?: 'appimage' | 'deb'
+  kind?: 'nsis' | 'appimage' | 'deb'
 }
 

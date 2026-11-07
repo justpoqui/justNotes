@@ -1,10 +1,13 @@
-# Builds justNotes and publishes it as a GitHub release whenever changes reach main.
-# Installed copies find the new release (the "Update pending" button, File ▸ Updates)
-# and install it when you click Install.
+# Builds justNotes for Windows and Linux and publishes it as a GitHub release whenever
+# changes reach main. Installed copies find the new release (the "Update pending" button,
+# File ▸ Updates) and install it when you click Install.
 #
 # Version numbers: the "version" in package.json gives the first two parts (1.0), and each
 # release from main takes the next third part: 1.0.0, 1.0.1, 1.0.2, ...
-# Pushes to other branches only run the checks (nothing is published).
+# Pushes to other branches only run the checks (on Linux and Windows); nothing is published.
+#
+# The release is made as a hidden draft, both builds add their files to it, and only when
+# both have succeeded is it published, so the app never sees a half-finished release.
 
 name: Release
 
@@ -18,52 +21,99 @@ permissions:
   contents: write # to create the release and upload the files
 
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # for the list of changes since the last release
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
 
-      - name: Install
-        run: npm ci
-
-      - name: Check
-        run: |
-          npm run typecheck
-          npm test
-
-      - name: Version and release notes
-        if: github.ref == 'refs/heads/main'
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # for the version number and the list of changes
+      - name: Version number
+        id: v
         run: |
           BASE=$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')")
           N=$(git tag --list "v$BASE.*" | grep -cE "^v$BASE\.[0-9]+$" || true)
-          VERSION="$BASE.$N"
-          echo "Releasing $VERSION"
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
-          LAST=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
-          # Hand-written notes for a version (build/release-notes-<version>.md) are used when present.
-          if [ -f "build/release-notes-$VERSION.md" ]; then cp "build/release-notes-$VERSION.md" release-notes.md; cat release-notes.md; exit 0; fi
+          echo "version=$BASE.$N" >> "$GITHUB_OUTPUT"
+          echo "Releasing $BASE.$N"
+      - name: Release notes
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
           {
-            echo "What's new in justNotes $VERSION:"
+            echo "## What's new in justNotes $VERSION"
             echo
-            if [ -n "$LAST" ]; then git log --no-merges --format='- %s' "$LAST"..HEAD; else git log --no-merges --format='- %s' -n 20; fi
+            if [ -f "build/release-notes-$VERSION.md" ]; then
+              cat "build/release-notes-$VERSION.md"
+            else
+              LAST=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+              if [ -n "$LAST" ]; then git log --no-merges --format='- %s' "$LAST"..HEAD; else git log --no-merges --format='- %s' -n 20; fi
+            fi
+            echo
+            sed "s/{{VERSION}}/$VERSION/g" build/release-download.md
           } > release-notes.md
           cat release-notes.md
-
-      - name: Build and publish (Linux x64 and arm64, AppImage and .deb)
-        if: github.ref == 'refs/heads/main'
+      - name: Create the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.v.outputs.version }}
         run: |
-          npm run build
-          npx electron-builder --linux AppImage deb --x64 --arm64 --publish always -c.releaseInfo.releaseNotesFile=release-notes.md
+          # (a draft left over from a failed run is replaced)
+          if gh release view "v$VERSION" --json isDraft --jq .isDraft 2>/dev/null | grep -q true; then gh release delete "v$VERSION" --yes; fi
+          gh release create "v$VERSION" --draft --target "$GITHUB_SHA" --title "justNotes $VERSION" --notes-file release-notes.md
+
+  build:
+    needs: prepare
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            targets: --linux AppImage deb --x64 --arm64
+          - os: windows-latest
+            targets: --win nsis --x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version
+      - run: npm run build
+      - name: Build and upload to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder ${{ matrix.targets }} --publish always
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest

@@ -48,6 +48,8 @@ describe('validateName', () => {
   )
   it('rejects page names that would clash with whiteboard files', () => {
     expect(() => validateName('Plan.canvas', 'page')).toThrowError(/reserved/)
+    for (const n of ['CON', 'nul', 'Com1', 'lpt9', 'aux.txt']) expect(() => validateName(n, 'page')).toThrowError(/Windows reserves/)
+    for (const n of ['Console', 'Nullable', 'COM10', 'auxiliary']) expect(validateName(n, 'page')).toBe(n)
   })
 })
 

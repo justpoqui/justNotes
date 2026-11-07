@@ -104,8 +104,10 @@ app.whenReady().then(async () => {
   //  - local files only from the app itself, the notes folder and the temporary print page.
   // Links you Ctrl+click still open in your normal browser (that doesn't go through here).
   const devServer = process.env.ELECTRON_RENDERER_URL ? new URL(process.env.ELECTRON_RENDERER_URL).host : null
-  const allowedDirs = [path.join(__dirname, '..'), engine.root].map((d) => path.resolve(d) + path.sep)
-  const printPrefix = path.join(os.tmpdir(), 'justnotes-print-')
+  // (Windows paths ignore upper/lower case, e.g. "c:\Users" and "C:\users" are the same folder.)
+  const norm = (p: string) => (process.platform === 'win32' ? p.toLowerCase() : p)
+  const allowedDirs = [path.join(__dirname, '..'), engine.root].map((d) => norm(path.resolve(d) + path.sep))
+  const printPrefix = norm(path.join(os.tmpdir(), 'justnotes-print-'))
   session.defaultSession.webRequest.onBeforeRequest({ urls: ['file://*/*', 'http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (details, callback) => {
     const url = new URL(details.url)
     if (url.protocol !== 'file:') {
@@ -115,7 +117,7 @@ app.whenReady().then(async () => {
     }
     let file = ''
     try {
-      file = path.resolve(fileURLToPath(details.url))
+      file = norm(path.resolve(fileURLToPath(details.url)))
     } catch {
       return callback({ cancel: true })
     }

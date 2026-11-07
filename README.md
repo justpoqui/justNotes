@@ -1,6 +1,6 @@
 # justNotes
 
-A local-first notebook for Linux. Your notes are plain Markdown files in folders, organized OneNote-style as **Notebook → Section → Page**. Pages are edited in a modern block editor and each page can have a whiteboard. There are no accounts and no cloud, and the app never connects to the internet.
+A local-first notebook for Windows and Linux. Your notes are plain Markdown files in folders, organized OneNote-style as **Notebook → Section → Page**. Pages are edited in a modern block editor and each page can have a whiteboard. There are no accounts and no cloud, and the app never connects to the internet.
 
 ```
 ~/Documents/justNotes/<Notebook>/<Section>/<Page>.md            ← the page (plain Markdown)
@@ -12,12 +12,15 @@ Your notes stay readable without the app: open any `.md` file in a text editor o
 
 ## Install
 
-**Download it (recommended).** Every change is built automatically and published on the [Releases page](https://github.com/justpoqui/justNotes/releases/latest). Pick the file for your computer: `amd64` / `x64` for most PCs, `arm64` for ARM Chromebooks (in the Linux terminal, `uname -m` says `aarch64` on those).
+Download it from the [Releases page](https://github.com/justpoqui/justNotes/releases/latest). Each release has a **Windows PC** and a **Linux** section that says which file to pick.
 
-- `justnotes_<version>_amd64.deb` (or `_arm64.deb`): install it with `sudo apt install ./justnotes_*.deb`. justNotes then appears in your app menu under Office.
-- `justNotes-x86_64.AppImage` (or `-arm64`): a single file that runs without installing. Make it executable (`chmod +x`), then double-click it.
+- **Windows PC:** download `justNotes-Setup-<version>.exe` and open it. It installs for your user (no admin password needed) and adds Start menu and desktop shortcuts. If Windows says "Windows protected your PC", click **More info → Run anyway**: justNotes isn't code-signed yet.
+- **Linux (Mint, Ubuntu, Debian):** `justnotes_<version>_amd64.deb`, installed with `sudo apt install ./justnotes_*.deb` (or double-click it on Mint). justNotes then appears in your app menu under Office. Or use `justNotes-x86_64.AppImage`: make it executable (`chmod +x`) and double-click it.
+- **ARM Chromebooks** (`uname -m` says `aarch64` in the Linux terminal): the same, with the `arm64` files.
 
-**Updates.** When a new version is published, justNotes downloads it in the background and shows **Update pending** at the top right. Click it, then **Install and restart**: your pages are saved first. The `.deb` asks for your password to install; the AppImage replaces itself. **File → Updates** shows your version and has **Check now**.
+On Windows, your notes are in `Documents\justNotes`; on Linux, `~/Documents/justNotes`.
+
+**Updates.** When a new version is published, justNotes downloads it in the background and shows **Update pending** at the top right. Click it, then **Install and restart**: your pages are saved first. On Windows the new version installs by itself in a few seconds; the `.deb` asks for your password; the AppImage replaces itself. **File → Updates** shows your version and has **Check now**.
 
 **Build it yourself.** `npm run package` makes the same files in `dist/`.
 
@@ -131,7 +134,7 @@ The one exception is **looking for updates**: the installed app asks GitHub (onl
 | `npm run build` | Builds the app |
 | `npm start` | Runs the built app |
 | `npm run package` | Builds the `.deb` and the AppImage into `dist/` |
-| (push to GitHub) | `.github/workflows/release.yml` tests, builds (x64 and arm64) and publishes a release, which installed copies then offer as an update |
+| (push to GitHub) | `.github/workflows/release.yml` tests (on Linux and Windows), builds (Windows installer; Linux AppImage and .deb for x64 and arm64) and publishes a release, which installed copies then offer as an update |
 | `npm test` | Unit and Markdown round-trip tests |
 | `npm run test:stress` | Stress tests and a randomised save/reload test (`FUZZ_N=2000 FUZZ_SEED=7` for more) |
 | `npm run typecheck` | Type-checks the code |

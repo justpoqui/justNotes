@@ -53,7 +53,9 @@ export function UpdateDialog({ onClose }: { onClose(): void }) {
           <p className="muted small">
             {u.kind === 'deb'
               ? 'Installing asks for your password (it updates the installed app), then justNotes restarts. Your pages are saved first.'
-              : 'justNotes saves your pages, replaces itself with the new version and restarts.'}
+              : u.kind === 'nsis'
+                ? 'justNotes saves your pages, installs the new version and restarts. It takes a few seconds.'
+                : 'justNotes saves your pages, replaces itself with the new version and restarts.'}
           </p>
         )}
         <label className="set-check">
