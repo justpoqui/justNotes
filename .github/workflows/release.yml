@@ -1,8 +1,10 @@
-# Builds justNotes and publishes it as a GitHub release whenever changes are pushed.
-# The app finds the new release (File ▸ Updates, and the "Update pending" button) and
-# installs it when you click Install.
+# Builds justNotes and publishes it as a GitHub release whenever changes reach main.
+# Installed copies find the new release (the "Update pending" button, File ▸ Updates)
+# and install it when you click Install.
 #
-# Each run gets the next version number: 0.1.<run number>.
+# Version numbers: the "version" in package.json gives the first two parts (1.0), and each
+# release from main takes the next third part: 1.0.0, 1.0.1, 1.0.2, ...
+# Pushes to other branches only run the checks (nothing is published).
 
 name: Release
 
@@ -41,10 +43,16 @@ jobs:
           npm test
 
       - name: Version and release notes
+        if: github.ref == 'refs/heads/main'
         run: |
-          VERSION="0.1.${{ github.run_number }}"
+          BASE=$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')")
+          N=$(git tag --list "v$BASE.*" | grep -cE "^v$BASE\.[0-9]+$" || true)
+          VERSION="$BASE.$N"
+          echo "Releasing $VERSION"
           npm version "$VERSION" --no-git-tag-version --allow-same-version
           LAST=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+          # Hand-written notes for a version (build/release-notes-<version>.md) are used when present.
+          if [ -f "build/release-notes-$VERSION.md" ]; then cp "build/release-notes-$VERSION.md" release-notes.md; cat release-notes.md; exit 0; fi
           {
             echo "What's new in justNotes $VERSION:"
             echo
@@ -53,6 +61,7 @@ jobs:
           cat release-notes.md
 
       - name: Build and publish (Linux x64 and arm64, AppImage and .deb)
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
