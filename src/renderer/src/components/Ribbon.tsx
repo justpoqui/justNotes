@@ -53,9 +53,10 @@ interface Props {
   onUpdates(): void
 }
 
-const TABS = ['File', 'Home', 'Insert', 'Draw', 'View'] as const
-/** Extra tabs that appear only while the cursor is in a table / a picture is selected (like Office). */
-const CONTEXT_TABS = ['Table', 'Picture'] as const
+const TABS = ['File', 'Home', 'Insert', 'View'] as const
+/** Extra tabs that appear only while they apply (like Office): Draw while a whiteboard is open,
+ *  Table while the cursor is in a table, Picture while a picture is selected. */
+const CONTEXT_TABS = ['Draw', 'Table', 'Picture'] as const
 
 // Text colors chosen to stay readable on both the dark and the light theme.
 const TEXT_COLORS = [
@@ -160,6 +161,7 @@ function Group({ label, children }: { label: string; children: React.ReactNode }
 
 export function Ribbon(props: Props) {
   const [tab, setTab] = useState<Tab>(() => {
+    if (props.mode === 'board') return 'Draw' // (started on a whiteboard)
     const t = load<Tab>('jn.ribbonTab', 'Home')
     return (TABS as readonly string[]).includes(t) ? t : 'Home'
   })
@@ -195,7 +197,8 @@ export function Ribbon(props: Props) {
   // Table / Picture tabs show while they apply; a vanished one falls back to Home.
   const inTable = is('table')
   const onPicture = !!ed && ed.state.selection instanceof NodeSelection && ed.state.selection.node.type.name === 'image'
-  const contextTabs = CONTEXT_TABS.filter((t) => (t === 'Table' ? inTable : onPicture))
+  const onBoard = props.hasPage && props.mode === 'board'
+  const contextTabs = CONTEXT_TABS.filter((t) => (t === 'Draw' ? onBoard : t === 'Table' ? inTable : onPicture))
   const shownTab: Tab = (CONTEXT_TABS as readonly string[]).includes(tab) && !contextTabs.includes(tab as (typeof CONTEXT_TABS)[number]) ? 'Home' : tab
   // Opening the whiteboard brings up the Draw tab; going back to the page brings back Home.
   const prevMode = useRef(props.mode)
@@ -233,7 +236,7 @@ export function Ribbon(props: Props) {
             role="tab"
             aria-selected={shownTab === t}
             className={`rb-tab contextual${shownTab === t ? ' selected' : ''}`}
-            title={t === 'Table' ? 'Rows, columns and other table tools' : 'Size and position of the selected picture'}
+            title={t === 'Draw' ? 'Drawing tools for this whiteboard' : t === 'Table' ? 'Rows, columns and other table tools' : 'Size and position of the selected picture'}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setTab(t)}
           >
