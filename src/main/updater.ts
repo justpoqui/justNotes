@@ -10,6 +10,7 @@ import { app, BrowserWindow, session } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { UpdateState } from '../shared/types'
+import { notesText } from './releaseNotes'
 
 const GITHUB_HOSTS = new Set(['github.com', 'api.github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com', 'github-releases.githubusercontent.com'])
 
@@ -21,8 +22,9 @@ function set(patch: Partial<UpdateState>): void {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('update:state', state)
 }
 
-/** How this copy was installed: only an AppImage or the .deb can update itself. */
-function installKind(): 'appimage' | 'deb' | null {
+/** How this copy was installed: the Windows installer, an AppImage or the .deb can update themselves. */
+function installKind(): 'nsis' | 'appimage' | 'deb' | null {
+  if (process.platform === 'win32') return app.isPackaged ? 'nsis' : null
   if (process.env.APPIMAGE) return 'appimage'
   try {
     const file = path.join(process.resourcesPath, 'package-type')
@@ -64,15 +66,15 @@ export async function initUpdater(): Promise<void> {
     set({
       status: 'unsupported',
       message: !app.isPackaged
-        ? 'This copy runs from the source folder, so it can’t update itself. Install the .deb or use the AppImage to get updates here.'
-        : 'Only the .deb and AppImage versions can update themselves.'
+        ? 'This copy runs from the source folder, so it can’t update itself. Install justNotes from the Releases page on GitHub to get updates here.'
+        : 'Only the installed versions (Windows installer, .deb or AppImage) can update themselves.'
     })
     if (!testUrl) return
   }
-  // Use the installer that matches how this copy was installed (an AppImage replaces its own
-  // file; the .deb is installed with the system's package manager).
-  const { AppImageUpdater, DebUpdater } = await import('electron-updater')
-  const autoUpdater = kind === 'deb' ? new DebUpdater() : new AppImageUpdater()
+  // Use the installer that matches how this copy was installed (Windows runs the new installer
+  // quietly; an AppImage replaces its own file; the .deb goes through the system's package manager).
+  const { AppImageUpdater, DebUpdater, NsisUpdater } = await import('electron-updater')
+  const autoUpdater = kind === 'nsis' ? new NsisUpdater() : kind === 'deb' ? new DebUpdater() : new AppImageUpdater()
   updater = autoUpdater
   allowUpdaterHosts(testUrl ? new URL(testUrl).host : null)
   autoUpdater.autoDownload = true // downloaded in the background, installed only when you click Install
@@ -96,12 +98,6 @@ export async function initUpdater(): Promise<void> {
     // A failed check or download leaves an already-downloaded update in place.
     if (state.status !== 'ready') set({ status: 'error', message: friendly(err) })
   })
-}
-
-function notesText(notes: unknown): string | undefined {
-  if (typeof notes === 'string') return notes.replace(/<[^>]+>/g, '').trim() || undefined
-  if (Array.isArray(notes)) return notes.map((n) => (typeof n?.note === 'string' ? n.note : '')).join('\n\n').replace(/<[^>]+>/g, '').trim() || undefined
-  return undefined
 }
 
 export const getUpdateState = (): UpdateState => state

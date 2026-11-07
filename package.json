@@ -129,7 +129,28 @@
       "provider": "github",
       "owner": "justpoqui",
       "repo": "justNotes",
-      "releaseType": "release"
+      "releaseType": "draft"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "executableName": "justNotes"
+    },
+    "nsis": {
+      "artifactName": "justNotes-Setup-${version}.exe",
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "justNotes",
+      "deleteAppDataOnUninstall": false
     }
   },
   "desktopName": "justnotes.desktop",

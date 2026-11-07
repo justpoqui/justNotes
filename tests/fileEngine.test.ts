@@ -48,6 +48,8 @@ describe('validateName', () => {
   )
   it('rejects page names that would clash with whiteboard files', () => {
     expect(() => validateName('Plan.canvas', 'page')).toThrowError(/reserved/)
+    for (const n of ['CON', 'nul', 'Com1', 'lpt9', 'aux.txt']) expect(() => validateName(n, 'page')).toThrowError(/Windows reserves/)
+    for (const n of ['Console', 'Nullable', 'COM10', 'auxiliary']) expect(validateName(n, 'page')).toBe(n)
   })
 })
 
@@ -185,8 +187,10 @@ describe('FileEngine', () => {
   })
 
   it('can still rename/delete items created outside the app with unusual names', async () => {
-    await fs.mkdir(path.join(engine.root, 'Odd: name'), { recursive: true })
-    await engine.renameNotebook('Odd: name', 'Normal')
+    // ("#" is allowed by every file system but not in names made in the app; ":" would be
+    // a better test on Linux, but Windows can't create such a folder at all.)
+    await fs.mkdir(path.join(engine.root, 'Odd # name'), { recursive: true })
+    await engine.renameNotebook('Odd # name', 'Normal')
     expect(await exists('Normal')).toBe(true)
   })
 

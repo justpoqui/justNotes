@@ -50,6 +50,27 @@ const TRASH_ID = /^\d{13}-[0-9a-f]{8}$/
  * A unique hidden temp file next to `file` (saves write here first, then rename
  * over the real file). Unique per call, so overlapping saves never collide.
  */
+/** Names Windows reserves for devices: CON, PRN, AUX, NUL, COM1–9, LPT1–9 (also "con.txt"). */
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(\.|$)/i
+
+/**
+ * fs.rename, but on Windows it tries again for a moment when the file is busy: antivirus
+ * scanners, search indexing and sync tools briefly lock files, and replacing a locked
+ * file fails there (EPERM / EACCES / EBUSY). Elsewhere it's plain fs.rename.
+ */
+export async function rename(from: string, to: string): Promise<void> {
+  if (process.platform !== 'win32') return fs.rename(from, to)
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fs.rename(from, to)
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (attempt >= 20 || (code !== 'EPERM' && code !== 'EACCES' && code !== 'EBUSY')) throw err
+      await new Promise((r) => setTimeout(r, Math.min(50 * (attempt + 1), 400)))
+    }
+  }
+}
+
 const tempPathFor = (file: string) => path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID().slice(0, 8)}.tmp`)
 /** Leftover temp files from a crash look like this. */
 export const TEMP_FILE = /^\..+\.[0-9a-f]{8}\.tmp$/
@@ -97,6 +118,9 @@ export function validateName(raw: unknown, kind: Kind): string {
     bad(`${shown} is not allowed. Avoid / \\ : * ? " < > | [ ] #`)
   }
   if (name.startsWith('.')) bad('names cannot start with a dot (those are hidden files).')
+  // Windows can't have files with these names (with any extension), so they're refused
+  // everywhere: notes stay usable if the folder is copied to a Windows PC.
+  if (WINDOWS_RESERVED.test(name)) bad('Windows reserves that name for devices.')
   if (name.endsWith('.')) bad('names cannot end with a dot.')
   if (kind === 'page' && name.toLowerCase().endsWith('.canvas')) bad('".canvas" is reserved for whiteboard files.')
   return name
@@ -337,7 +361,7 @@ export class FileEngine {
     if (name === oldName) return name
     await this.assertFree(this.root, name, (e) => `A notebook named "${e}"`, oldName)
     try {
-      await fs.rename(from, this.notebookDir(name))
+      await rename(from, this.notebookDir(name))
     } catch (err) {
       wrapIo(err, `Renaming notebook "${oldName}"`)
     }
@@ -387,7 +411,7 @@ export class FileEngine {
     if (name === oldName) return name
     await this.assertFree(this.notebookDir(nb), name, (e) => `A section named "${e}" in "${nb}"`, oldName)
     try {
-      await fs.rename(from, this.sectionDir(nb, name))
+      await rename(from, this.sectionDir(nb, name))
     } catch (err) {
       wrapIo(err, `Renaming section "${oldName}"`)
     }
@@ -452,15 +476,15 @@ export class FileEngine {
     await this.assertFree(secDir, name + CANVAS_EXT, (e) => `A whiteboard file named "${e}"`, oldName + CANVAS_EXT)
     const to = this.pageFile(nb, sec, name)
     try {
-      await fs.rename(from, to)
+      await rename(from, to)
       const canvas = this.canvasFile(nb, sec, oldName)
-      if (await this.isFile(canvas)) await fs.rename(canvas, this.canvasFile(nb, sec, name))
+      if (await this.isFile(canvas)) await rename(canvas, this.canvasFile(nb, sec, name))
       // Keep the default "# Title" heading in sync with the file name.
       const text = await fs.readFile(to, 'utf8')
       const heading = `# ${oldName}\n`
       if (text.startsWith(heading)) await fs.writeFile(to, `# ${name}\n` + text.slice(heading.length), 'utf8')
       const hist = path.join(secDir, HISTORY_DIR, oldName)
-      if (await this.isDir(hist)) await fs.rename(hist, path.join(secDir, HISTORY_DIR, name)).catch(() => {})
+      if (await this.isDir(hist)) await rename(hist, path.join(secDir, HISTORY_DIR, name)).catch(() => {})
     } catch (err) {
       wrapIo(err, `Renaming page "${oldName}"`)
     }
@@ -497,7 +521,7 @@ export class FileEngine {
       await fs.writeFile(to, text, { encoding: 'utf8', flag: 'wx' })
       if (await this.isFile(fromCanvas)) {
         try {
-          await fs.rename(fromCanvas, this.canvasFile(toNb, toSec, name))
+          await rename(fromCanvas, this.canvasFile(toNb, toSec, name))
         } catch (err) {
           await fs.rm(to, { force: true }) // undo, so the page isn't left in two places
           throw err
@@ -507,7 +531,7 @@ export class FileEngine {
       const hist = path.join(fromDir, HISTORY_DIR, name)
       if (await this.isDir(hist)) {
         await fs.mkdir(path.join(toDir, HISTORY_DIR), { recursive: true })
-        await fs.rename(hist, path.join(toDir, HISTORY_DIR, name)).catch(() => {})
+        await rename(hist, path.join(toDir, HISTORY_DIR, name)).catch(() => {})
       }
     } catch (err) {
       wrapIo(err, `Moving page "${name}"`)
@@ -592,7 +616,7 @@ export class FileEngine {
     const tmp = tempPathFor(file)
     try {
       await fs.writeFile(tmp, content, 'utf8')
-      await fs.rename(tmp, file)
+      await rename(tmp, file)
     } catch (err) {
       await fs.rm(tmp, { force: true }).catch(() => {})
       wrapIo(err, `Saving page "${name}"`)
@@ -679,7 +703,7 @@ export class FileEngine {
     const tmp = tempPathFor(file)
     try {
       await fs.writeFile(tmp, content, 'utf8')
-      await fs.rename(tmp, file)
+      await rename(tmp, file)
     } catch (err) {
       await fs.rm(tmp, { force: true }).catch(() => {})
       wrapIo(err, `Saving the whiteboard of "${name}"`)
@@ -732,7 +756,7 @@ export class FileEngine {
     const file = path.join(dir, ORDER_FILE)
     const tmp = tempPathFor(file)
     await fs.writeFile(tmp, JSON.stringify([...new Set(names)], null, 1) + '\n', 'utf8')
-    await fs.rename(tmp, file)
+    await rename(tmp, file)
   }
 
   /** Only once an order was set by hand does a new item get a place at the end of it. */
@@ -769,7 +793,7 @@ export class FileEngine {
     }
     const tmp = tempPathFor(file)
     await fs.writeFile(tmp, JSON.stringify(levels, null, 1) + '\n', 'utf8')
-    await fs.rename(tmp, file)
+    await rename(tmp, file)
   }
 
   /** Renames (or with null, forgets) a page's subpage level. */
@@ -827,7 +851,7 @@ export class FileEngine {
     const file = path.join(nbDir, COLORS_FILE)
     const tmp = tempPathFor(file)
     await fs.writeFile(tmp, JSON.stringify(colors, null, 1) + '\n', 'utf8')
-    await fs.rename(tmp, file)
+    await rename(tmp, file)
   }
 
   /** Sets (or with null, clears) a section's tab color. */
@@ -919,7 +943,7 @@ export class FileEngine {
       await fs.mkdir(dir, { recursive: true })
       await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify({ ...meta, deletedAt: new Date().toISOString() }, null, 1), 'utf8')
       if (meta.kind === 'page') await fs.mkdir(path.join(dir, 'item'))
-      for (const [from, to] of moves) await fs.rename(from, meta.kind === 'page' ? path.join(dir, 'item', to) : path.join(dir, to))
+      for (const [from, to] of moves) await rename(from, meta.kind === 'page' ? path.join(dir, 'item', to) : path.join(dir, to))
     } catch (err) {
       wrapIo(err, what)
     }
@@ -969,7 +993,7 @@ export class FileEngine {
     try {
       if (item.kind === 'notebook') {
         const name = await this.freeName(this.root, existingName(item.notebook, 'notebook'))
-        await fs.rename(path.join(dir, 'item'), this.notebookDir(name))
+        await rename(path.join(dir, 'item'), this.notebookDir(name))
         await fs.rm(dir, { recursive: true, force: true })
         await this.addToOrder(this.root, name)
         return { notebook: name }
@@ -978,7 +1002,7 @@ export class FileEngine {
       await fs.mkdir(this.notebookDir(nb), { recursive: true })
       if (item.kind === 'section') {
         const name = await this.freeName(this.notebookDir(nb), existingName(item.section, 'section'))
-        await fs.rename(path.join(dir, 'item'), this.sectionDir(nb, name))
+        await rename(path.join(dir, 'item'), this.sectionDir(nb, name))
         await fs.rm(dir, { recursive: true, force: true })
         await this.addToOrder(this.notebookDir(nb), name)
         return { notebook: nb, section: name }
@@ -987,11 +1011,11 @@ export class FileEngine {
       const secDir = this.sectionDir(nb, sec)
       await fs.mkdir(secDir, { recursive: true })
       const name = await this.freeName(secDir, existingName(item.page, 'page'), PAGE_EXT)
-      await fs.rename(path.join(dir, 'item', 'page.md'), this.pageFile(nb, sec, name))
-      if (await this.isFile(path.join(dir, 'item', 'page.canvas.json'))) await fs.rename(path.join(dir, 'item', 'page.canvas.json'), this.canvasFile(nb, sec, name))
+      await rename(path.join(dir, 'item', 'page.md'), this.pageFile(nb, sec, name))
+      if (await this.isFile(path.join(dir, 'item', 'page.canvas.json'))) await rename(path.join(dir, 'item', 'page.canvas.json'), this.canvasFile(nb, sec, name))
       if (await this.isDir(path.join(dir, 'item', 'history'))) {
         await fs.mkdir(path.join(secDir, HISTORY_DIR), { recursive: true })
-        await fs.rename(path.join(dir, 'item', 'history'), path.join(secDir, HISTORY_DIR, name)).catch(() => {})
+        await rename(path.join(dir, 'item', 'history'), path.join(secDir, HISTORY_DIR, name)).catch(() => {})
       }
       await fs.rm(dir, { recursive: true, force: true })
       await this.addToOrder(secDir, name)
@@ -1106,7 +1130,7 @@ export class FileEngine {
     const tmp = tempPathFor(file)
     try {
       await fs.writeFile(tmp, text, 'utf8')
-      await fs.rename(tmp, file)
+      await rename(tmp, file)
     } catch (err) {
       await fs.rm(tmp, { force: true }).catch(() => {})
       wrapIo(err, 'Restoring that version')

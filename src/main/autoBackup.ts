@@ -6,7 +6,7 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { EngineFailure, type FileEngine } from './fileEngine'
+import { EngineFailure, rename, type FileEngine } from './fileEngine'
 
 export const DEFAULT_BACKUP_DIR = path.join(os.homedir(), 'Documents', 'justNotes Backups')
 const PREFIX = 'justNotes backup '
@@ -40,7 +40,7 @@ export async function runBackup(engine: FileEngine, dirRaw: unknown, keepRaw: un
       const file = path.join(folder, zipName(nb.name))
       const tmp = path.join(folder, `.${randomUUID()}.tmp`)
       await fs.writeFile(tmp, data)
-      await fs.rename(tmp, file) // a half-written zip never replaces a good one
+      await rename(tmp, file) // a half-written zip never replaces a good one
     }
     // Remove the oldest backup folders beyond `keep` (only folders this feature made).
     const days = (await fs.readdir(dir, { withFileTypes: true }))

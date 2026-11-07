@@ -25,7 +25,11 @@ async function wrap<T>(fn: () => Promise<T> | T): Promise<Result<T>> {
 
 let fontCache: Promise<string[]> | null = null
 /** Font families installed on this computer (from fontconfig, so nothing is downloaded). */
+// Windows has no fc-list: offer the fonts every Windows PC has.
+const WINDOWS_FONTS = ['Arial', 'Bahnschrift', 'Calibri', 'Cambria', 'Candara', 'Comic Sans MS', 'Consolas', 'Constantia', 'Corbel', 'Courier New', 'Georgia', 'Segoe Print', 'Segoe Script', 'Segoe UI', 'Sitka Text', 'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana']
+
 function listFonts(): Promise<string[]> {
+  if (process.platform === 'win32') return Promise.resolve(WINDOWS_FONTS)
   fontCache ??= new Promise((resolve) =>
     execFile('fc-list', [':', 'family'], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (err, out) => {
       if (err) return resolve([])
