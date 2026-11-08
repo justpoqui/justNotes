@@ -82,6 +82,7 @@ const api: WikiApi = {
       }
     }
   },
+  getLegal: call('getLegal'),
   getUpdateState: call('getUpdateState'),
   checkForUpdates: call('checkForUpdates'),
   installUpdate: call('installUpdate'),

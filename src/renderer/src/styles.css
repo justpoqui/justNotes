@@ -714,3 +714,15 @@ kbd { font: 12px ui-monospace, monospace; padding: 1px 5px; border: 1px solid va
 .update-pill.quiet { border-color: var(--border); background: none; color: var(--muted); font-weight: 500; }
 .update-pill:hover { filter: brightness(1.15); }
 .update-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+
+/* ---------- About ---------- */
+.about-dialog { width: min(560px, calc(100vw - 32px)); }
+.about-dialog .actions button { white-space: nowrap; }
+.about-dialog.wide { width: min(760px, calc(100vw - 32px)); }
+.about-dialog .dlg-head { display: flex; justify-content: space-between; align-items: center; }
+.about-top { display: flex; align-items: center; gap: 14px; margin: 6px 0 12px; }
+.about-top img { border-radius: 12px; }
+.about-name { font-size: 20px; font-weight: 650; color: var(--fg); }
+.about-copy { color: var(--fg) !important; margin: 0 0 10px !important; line-height: 1.5; }
+.about-dialog .muted.small { margin: 0 0 8px !important; }
+.legal-text { white-space: pre-wrap; font: 12px/1.5 ui-monospace, 'Cascadia Code', 'DejaVu Sans Mono', monospace; margin: 4px 0 0; height: min(60vh, 520px); overflow-y: auto; padding: 10px 12px; background: var(--code-bg); border-radius: 6px; color: var(--fg); }

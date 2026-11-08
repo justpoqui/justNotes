@@ -1,0 +1,17 @@
+FONTS USED BY THE WHITEBOARD
+
+The whiteboard (Excalidraw) comes with these fonts, bundled inside justNotes so that it
+works offline. They are distributed under the SIL Open Font License 1.1 (full text below),
+except Comic Shanns, which is under the MIT License.
+
+- Virgil and Excalifont: Copyright (c) Excalidraw. SIL Open Font License 1.1.
+- Cascadia Code: Copyright (c) Microsoft Corporation. SIL Open Font License 1.1.
+- Nunito: Copyright The Nunito Project Authors. SIL Open Font License 1.1.
+- Lilita One: Copyright Juan Montoreano. SIL Open Font License 1.1.
+- Assistant: Copyright The Assistant Project Authors. SIL Open Font License 1.1.
+- Liberation Sans: Copyright (c) Red Hat, Inc. SIL Open Font License 1.1.
+- Xiaolai: Copyright The LXGW Project Authors. SIL Open Font License 1.1.
+- Comic Shanns: Copyright (c) Shannon Miwa. MIT License (text below).
+
+The fonts are unmodified. Reserved Font Names, where declared by the authors, remain
+the property of their owners.

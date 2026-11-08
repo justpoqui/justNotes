@@ -2,7 +2,7 @@
 // throwing, because Electron strips custom properties (like `code`) from errors
 // that cross the IPC boundary.
 
-import { BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -148,6 +148,13 @@ export function registerIpc(engine: FileEngine): void {
 
     exportPdf: (html, title) => exportPdf(BrowserWindow.getFocusedWindow(), String(html), String(title)),
     listFonts: () => listFonts(),
+    getLegal: async () => {
+      // Packaged: copies in the app's resources folder. From source: the files in the project.
+      const read = (...candidates: string[]) => Promise.any(candidates.map((f) => fs.readFile(f, 'utf8'))).catch(() => '')
+      const license = await read(path.join(process.resourcesPath ?? '', 'LICENSE.txt'), path.join(app.getAppPath(), 'LICENSE'))
+      const notices = await read(path.join(__dirname, '../renderer/THIRD-PARTY-NOTICES.txt'), path.join(process.resourcesPath ?? '', 'THIRD-PARTY-NOTICES.txt'))
+      return { license, notices, version: app.getVersion() }
+    },
     getUpdateState: () => getUpdateState(),
     checkForUpdates: () => checkForUpdates(),
     installUpdate: () => installUpdate(),
