@@ -51,6 +51,8 @@ interface Props {
   onQuickOpen(): void
   /** Opens the Updates window. */
   onUpdates(): void
+  /** Opens File ▸ About. */
+  onAbout(): void
 }
 
 const TABS = ['File', 'Home', 'Insert', 'View'] as const
@@ -273,6 +275,7 @@ export function Ribbon(props: Props) {
               <Btn icon={Ic.Gear} label="Settings" title="Settings (Ctrl+,)" onClick={props.onOpenSettings} />
               <Btn icon={Ic.Keyboard} label="Shortcuts" title="Keyboard shortcuts (F1)" onClick={props.onShortcuts} />
               <Btn icon={Ic.Download} label="Updates" title="Check for a new version of justNotes" onClick={props.onUpdates} />
+              <Btn icon={Ic.Info} label="About" title="Version, license and credits" onClick={props.onAbout} />
             </Group>
           </>
         )}

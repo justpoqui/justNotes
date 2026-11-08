@@ -146,3 +146,14 @@ The one exception is **looking for updates**: the installed app asks GitHub (onl
 - `src/main/`: file engine and storage (`fileEngine.ts`), IPC, file watcher, PDF export, network and file-access rules
 - `src/preload/`: the small, typed bridge the window is allowed to use (`window.wiki`)
 - `src/renderer/`: the React app, with the editor in `editor/`, proofing in `proofing/` and the screens in `components/`
+
+## License
+
+**Copyright © 2026 justpoqui. All rights reserved.** justNotes was created by justpoqui, its original author and owner.
+
+- You may download and use the official releases for free.
+- The source code is public so that you can read it. Copying it, changing it, building on it or redistributing it needs written permission from justpoqui. See [LICENSE](LICENSE) for the full terms.
+- Your notes always belong to you.
+
+justNotes includes open-source software, fonts and dictionaries made by others, each under its own license. They're listed with their license texts in `THIRD-PARTY-NOTICES.txt`, which ships with the app and is shown in **File → About → Third-party software**. The list is generated automatically from what's actually in the app every time it's built.
+

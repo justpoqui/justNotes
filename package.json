@@ -81,7 +81,10 @@
     }
   },
   "productName": "justNotes",
-  "author": "justpoqui",
+  "author": {
+    "name": "justpoqui",
+    "url": "https://github.com/justpoqui"
+  },
   "homepage": "https://github.com/justpoqui/justNotes",
   "build": {
     "appId": "app.justnotes.desktop",
@@ -98,6 +101,14 @@
       {
         "from": "build/icon.png",
         "to": "icon.png"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "out/renderer/THIRD-PARTY-NOTICES.txt",
+        "to": "THIRD-PARTY-NOTICES.txt"
       }
     ],
     "asar": true,
@@ -157,12 +168,15 @@
       "deleteAppDataOnUninstall": false,
       "installerSidebar": "build/installerSidebar.bmp",
       "uninstallerSidebar": "build/uninstallerSidebar.bmp",
-      "include": "build/installer.nsh"
-    }
+      "include": "build/installer.nsh",
+      "license": "LICENSE"
+    },
+    "copyright": "Copyright \u00a9 2026 justpoqui. All rights reserved."
   },
   "desktopName": "justnotes.desktop",
   "repository": {
     "type": "git",
     "url": "https://github.com/justpoqui/justNotes.git"
-  }
+  },
+  "license": "SEE LICENSE IN LICENSE"
 }

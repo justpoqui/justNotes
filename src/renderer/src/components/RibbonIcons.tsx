@@ -89,3 +89,4 @@ export const PicMedium = I(<><rect x="3" y="3" width="14" height="14" rx="1.5" s
 export const PicLarge = I(<><rect x="3" y="3" width="14" height="14" rx="1.5" /><path d="m5.5 14 3.5-4 2.5 2.5 1.5-1.5 2 3" /><circle cx="12.5" cy="7" r="1" /></>)
 export const PageWidth = I(<><path d="M5 3.5v13M15 3.5v13" /><path d="M7.5 10h5M9 8.3 7.3 10 9 11.7M11 8.3l1.7 1.7-1.7 1.7" /></>)
 export const Download = I(<><path d="M10 3.5v9M6.5 9 10 12.5 13.5 9" /><path d="M4 14.5v1.5h12v-1.5" /></>)
+export const Info = I(<><circle cx="10" cy="10" r="7" /><path d="M10 9v4.5M10 6.5v.01" /></>)

@@ -160,6 +160,8 @@ export interface WikiApi {
 
   /** Opens the justNotes folder in the system file manager. */
   openRootFolder(): Promise<Result<void>>
+  /** justNotes' own license, and the notices for the third-party software it includes. */
+  getLegal(): Promise<Result<{ license: string; notices: string; version: string }>>
   getUpdateState(): Promise<Result<UpdateState>>
   checkForUpdates(): Promise<Result<UpdateState>>
   /** Installs the downloaded update and restarts the app. */
